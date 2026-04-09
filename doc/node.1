@@ -720,6 +720,11 @@ top-level awaits, and print their location to help users find them.
 .It Fl -experimental-quic
 Enable experimental support for the QUIC protocol.
 .
+.It Fl -experimental-stream-iter
+Enable the experimental
+.Sy node:stream/iter
+module.
+.
 .It Fl -experimental-sea-config
 Use this flag to generate a blob that can be injected into the Node.js
 binary to produce a single executable application. See the documentation
@@ -1357,6 +1362,22 @@ tests must satisfy \fBboth\fR requirements in order to be executed.
 .It Fl -test-only
 Configures the test runner to only execute top level tests that have the \fBonly\fR
 option set. This flag is not necessary when test isolation is disabled.
+.
+.It Fl -test-random-seed
+Set the seed used to randomize test execution order.
+This applies to both test file execution order and queued tests within each file.
+Providing this flag enables randomization implicitly, even without
+\fB--test-randomize\fR.
+The value must be an integer between 0 and 4294967295.
+This flag cannot be used with \fB--watch\fR or \fB--test-rerun-failures\fR.
+.
+.It Fl -test-randomize
+Randomize test execution order.
+This applies to both test file execution order and queued tests within each file.
+This can help detect tests that rely on shared state or execution order.
+The seed used for randomization is printed in the test summary and can be
+reused with \fB--test-random-seed\fR.
+This flag cannot be used with \fB--watch\fR or \fB--test-rerun-failures\fR.
 .
 .It Fl -test-reporter
 A test reporter to use when running tests. See the documentation on
@@ -2035,6 +2056,10 @@ one is included in the list below.
 .It
 \fB--test-reporter-destination\fR
 .It
+\fB--test-randomize\fR
+.It
+\fB--test-random-seed\fR
+.It
 \fB--test-reporter\fR
 .It
 \fB--test-rerun-failures\fR
@@ -2287,7 +2312,7 @@ that run in libuv's threadpool will experience degraded performance. In order to
 mitigate this issue, one potential solution is to increase the size of libuv's
 threadpool by setting the \fB'UV_THREADPOOL_SIZE'\fR environment variable to a value
 greater than \fB4\fR (its current default value). However, setting this from inside
-the process using \fBprocess.env.UV_THREADPOOL_SIZE=size\fR is not guranteed to work
+the process using \fBprocess.env.UV_THREADPOOL_SIZE=size\fR is not guaranteed to work
 as the threadpool would have been created as part of the runtime initialisation
 much before user code is run. For more information, see the libuv threadpool documentation.
 .

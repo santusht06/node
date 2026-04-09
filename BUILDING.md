@@ -156,7 +156,7 @@ Depending on the host platform, the selection of toolchains may vary.
 
 | Operating System | Compiler Versions                                                   |
 | ---------------- | ------------------------------------------------------------------- |
-| Linux            | GCC >= 12.2 or Clang >= 19.1                                        |
+| Linux            | GCC >= 13.2 or Clang >= 19.1                                        |
 | Windows          | Visual Studio 2022 or 2026 with the Windows 11 SDK on a 64-bit host |
 | macOS            | Xcode >= 16.4 (Apple LLVM >= 19)                                    |
 
@@ -238,7 +238,7 @@ Consult previous versions of this document for older versions of Node.js:
 
 #### Unix prerequisites
 
-* `gcc` and `g++` >= 12.2 or `clang` and `clang++` >= 19.1
+* `gcc` and `g++` >= 13.2 or `clang` and `clang++` >= 19.1
 * GNU Make 3.81 or newer
 * [A supported version of Python][Python versions]
   * For test coverage, your Python installation must include pip.
@@ -404,11 +404,9 @@ If you are running tests before submitting a pull request, use:
 make -j4 test
 ```
 
-`make -j4 test` does a full check on the codebase, including running linters and
-documentation tests.
+`make -j4 test` does a full check on the codebase, including documentation tests.
 
-To run the linter without running tests, use
-`make lint`/`vcbuild lint`. It will lint JavaScript, C++, and Markdown files.
+To run the linter, use `make lint`/`vcbuild lint`. It will lint JavaScript, C++, and Markdown files.
 
 To fix auto fixable JavaScript linting errors, use `make lint-js-fix`.
 

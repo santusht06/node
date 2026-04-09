@@ -1452,7 +1452,9 @@ def get_cargo_version(cargo):
   except OSError:
     error('''No acceptable cargo found!
 
-       Please make sure you have cargo installed on your system.''')
+       Please make sure you have cargo installed on your system and/or
+       consider adjusting the CARGO environment variable if you have installed
+       it in a non-standard prefix.''')
 
   with proc:
     cargo_ret = to_utf8(proc.communicate()[0])
@@ -1519,8 +1521,8 @@ def check_compiler(o):
   print_verbose(f"Detected {'Apple ' if is_apple else ''}{'clang ' if is_clang else ''}C++ compiler (CXX={CXX}) version: {version_str}")
   if not ok:
     warn(f'failed to autodetect C++ compiler version (CXX={CXX})')
-  elif ((is_apple and clang_version < (17, 0, 0)) or (not is_apple and clang_version < (19, 1, 0))) if is_clang else gcc_version < (12, 2, 0):
-    warn(f"C++ compiler (CXX={CXX}, {version_str}) too old, need g++ 12.2.0 or clang++ 19.1.0{' or Apple clang++ 17.0.0' if is_apple else ''}")
+  elif ((is_apple and clang_version < (17, 0, 0)) or (not is_apple and clang_version < (19, 1, 0))) if is_clang else gcc_version < (13, 2, 0):
+    warn(f"C++ compiler (CXX={CXX}, {version_str}) too old, need g++ 13.2.0 or clang++ 19.1.0{' or Apple clang++ 17.0.0' if is_apple else ''}")
 
   ok, is_clang, clang_version, gcc_version, is_apple = try_check_compiler(CC, 'c')
   version_str = ".".join(map(str, clang_version if is_clang else gcc_version))
@@ -1540,8 +1542,9 @@ def check_compiler(o):
     # Minimum cargo and rustc versions should match values in BUILDING.md.
     min_cargo_ver_tuple = (1, 82)
     min_rustc_ver_tuple = (1, 82)
-    cargo_ver = get_cargo_version('cargo')
-    print_verbose(f'Detected cargo: {cargo_ver}')
+    cargo = os.environ.get('CARGO', 'cargo')
+    cargo_ver = get_cargo_version(cargo)
+    print_verbose(f'Detected cargo (CARGO={cargo}): {cargo_ver}')
     cargo_ver_tuple = tuple(map(int, cargo_ver.split('.')))
     if cargo_ver_tuple < min_cargo_ver_tuple:
       warn(f'cargo {cargo_ver} too old, need cargo {".".join(map(str, min_cargo_ver_tuple))}')
@@ -2007,10 +2010,9 @@ def configure_library(lib, output, pkgname=None):
       output['libraries'] += [pkg_libpath]
 
     default_libs = getattr(options, shared_lib + '_libname')
-    default_libs = [f'-l{l}' for l in default_libs.split(',')]
 
     if default_libs:
-      output['libraries'] += default_libs
+      output['libraries'] += [f'-l{l}' for l in default_libs.split(',')]
     elif pkg_libs:
       output['libraries'] += pkg_libs.split()
 
@@ -2751,6 +2753,11 @@ if flavor == 'win' and python.lower().endswith('.exe'):
 # Always set 'python' variable, otherwise environments that only have python3
 # will fail to run python scripts.
 gyp_args += ['-Dpython=' + python]
+
+if options.v8_enable_temporal_support and not options.shared_temporal_capi:
+  cargo = os.environ.get('CARGO')
+  if cargo:
+    gyp_args += ['-Dcargo=' + cargo]
 
 if options.use_ninja:
   gyp_args += ['-f', 'ninja-' + flavor]

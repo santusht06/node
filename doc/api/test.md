@@ -627,6 +627,94 @@ prevent shell expansion, which can reduce portability across systems.
 node --test "**/*.test.js" "**/*.spec.js"
 ```
 
+### Randomizing tests execution order
+
+<!-- YAML
+added: REPLACEME
+-->
+
+> Stability: 1.0 - Early development
+
+The test runner can randomize execution order to help detect
+order-dependent tests. When enabled, the runner randomizes both discovered
+test files and queued tests within each file. Use `--test-randomize` to
+enable this mode.
+
+```bash
+node --test --test-randomize
+```
+
+When randomization is enabled, the test runner prints the seed used for the run
+as a diagnostic message:
+
+```text
+Randomized test order seed: 12345
+```
+
+Use `--test-random-seed=<number>` to replay the same randomized order
+deterministically. Supplying `--test-random-seed` also enables randomization,
+so `--test-randomize` is optional when a seed is provided:
+
+```bash
+node --test --test-random-seed=12345
+```
+
+In most test files, randomization works automatically. One important exception
+is when subtests are awaited one by one. In that pattern, each subtest starts
+only after the previous one finishes, so the runner keeps declaration order
+instead of randomizing it.
+
+Example: this runs sequentially and is **not** randomized.
+
+```mjs
+import test from 'node:test';
+
+test('math', async (t) => {
+  for (const name of ['adds', 'subtracts', 'multiplies']) {
+    // Sequentially awaiting each subtest preserves declaration order.
+    await t.test(name, async () => {});
+  }
+});
+```
+
+```cjs
+const test = require('node:test');
+
+test('math', async (t) => {
+  for (const name of ['adds', 'subtracts', 'multiplies']) {
+    // Sequentially awaiting each subtest preserves declaration order.
+    await t.test(name, async () => {});
+  }
+});
+```
+
+Using suite-style APIs such as `describe()`/`it()` or `suite()`/`test()`
+still allows randomization, because sibling tests are enqueued together.
+
+Example: this remains eligible for randomization.
+
+```mjs
+import { describe, it } from 'node:test';
+
+describe('math', () => {
+  it('adds', () => {});
+  it('subtracts', () => {});
+  it('multiplies', () => {});
+});
+```
+
+```cjs
+const { describe, it } = require('node:test');
+
+describe('math', () => {
+  it('adds', () => {});
+  it('subtracts', () => {});
+  it('multiplies', () => {});
+});
+```
+
+`--test-randomize` and `--test-random-seed` are not supported with `--watch` mode.
+
 Matching files are executed as test files.
 More information on the test file execution can be found
 in the [test runner execution model][] section.
@@ -667,6 +755,10 @@ test runner functionality:
 * `--test-reporter` - Reporting is managed by the parent process
 * `--test-reporter-destination` - Output destinations are controlled by the parent
 * `--experimental-config-file` - Config file paths are managed by the parent
+* `--test-randomize` - Randomization is managed by the parent process and
+  propagated to child processes
+* `--test-random-seed` - Randomization seed is managed by the parent process and
+  propagated to child processes
 
 All other Node.js options from command line arguments, environment variables,
 and configuration files are inherited by the child processes.
@@ -1575,6 +1667,14 @@ changes:
       that specifies the index of the shard to run. This option is _required_.
     * `total` {number} is a positive integer that specifies the total number
       of shards to split the test files to. This option is _required_.
+  * `randomize` {boolean} Randomize execution order for test files and queued tests.
+    This option is not supported with `watch: true`.
+    **Default:** `false`.
+  * `randomSeed` {number} Seed used when randomizing execution order. If this
+    option is set, runs can replay the same randomized order deterministically,
+    and setting this option also enables randomization. The value must be an
+    integer between `0` and `4294967295`.
+    **Default:** `undefined`.
   * `rerunFailuresFilePath` {string} A file path where the test runner will
     store the state of the tests to allow rerunning only the failed tests on a next run.
     see \[Rerunning failed tests]\[] for more information.
@@ -2483,16 +2583,32 @@ changes:
     generates a new mock module. If `true`, subsequent calls will return the same
     module mock, and the mock module is inserted into the CommonJS cache.
     **Default:** false.
+  * `exports` {Object} Optional mocked exports. The `default` property, if
+    provided, is used as the mocked module's default export. All other own
+    enumerable properties are used as named exports.
+    **This option cannot be used with `defaultExport` or `namedExports`.**
+    * If the mock is a CommonJS or builtin module, `exports.default` is used as
+      the value of `module.exports`.
+    * If `exports.default` is not provided for a CommonJS or builtin mock,
+      `module.exports` defaults to an empty object.
+    * If named exports are provided with a non-object default export, the mock
+      throws an exception when used as a CommonJS or builtin module.
   * `defaultExport` {any} An optional value used as the mocked module's default
     export. If this value is not provided, ESM mocks do not include a default
     export. If the mock is a CommonJS or builtin module, this setting is used as
     the value of `module.exports`. If this value is not provided, CJS and builtin
     mocks use an empty object as the value of `module.exports`.
+    **This option cannot be used with `options.exports`.**
+    This option is deprecated and will be removed in a later version.
+    Prefer `options.exports.default`.
   * `namedExports` {Object} An optional object whose keys and values are used to
     create the named exports of the mock module. If the mock is a CommonJS or
     builtin module, these values are copied onto `module.exports`. Therefore, if a
     mock is created with both named exports and a non-object default export, the
     mock will throw an exception when used as a CJS or builtin module.
+    **This option cannot be used with `options.exports`.**
+    This option is deprecated and will be removed in a later version.
+    Prefer `options.exports`.
 * Returns: {MockModuleContext} An object that can be used to manipulate the mock.
 
 This function is used to mock the exports of ECMAScript modules, CommonJS modules, JSON modules, and
@@ -2509,10 +2625,10 @@ The following example demonstrates how a mock is created for a module.
 
 ```js
 test('mocks a builtin module in both module systems', async (t) => {
-  // Create a mock of 'node:readline' with a named export named 'fn', which
+  // Create a mock of 'node:readline' with a named export named 'foo', which
   // does not exist in the original 'node:readline' module.
   const mock = t.mock.module('node:readline', {
-    namedExports: { fn() { return 42; } },
+    exports: { foo: () => 42 },
   });
 
   let esmImpl = await import('node:readline');
@@ -3547,6 +3663,44 @@ Emitted when no more tests are queued for execution in watch mode.
 
 Emitted when one or more tests are restarted due to a file change in watch mode.
 
+## `getTestContext()`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* Returns: {TestContext|SuiteContext|undefined}
+
+Returns the [`TestContext`][] or [`SuiteContext`][] object associated with the
+currently executing test or suite, or `undefined` if called outside of a test or
+suite. This function can be used to access context information from within the
+test or suite function or any async operations within them.
+
+```mjs
+import { getTestContext } from 'node:test';
+
+test('example test', async () => {
+  const ctx = getTestContext();
+  console.log(`Running test: ${ctx.name}`);
+});
+
+describe('example suite', () => {
+  const ctx = getTestContext();
+  console.log(`Running suite: ${ctx.name}`);
+});
+```
+
+When called from a test, returns a [`TestContext`][].
+When called from a suite, returns a [`SuiteContext`][].
+
+If called from outside a test or suite (e.g., at the top level of a module or in
+a setTimeout callback after execution has completed), this function returns
+`undefined`.
+
+When called from within a hook (before, beforeEach, after, afterEach), this
+function returns the context of the test or suite that the hook is associated
+with.
+
 ## Class: `TestContext`
 
 <!-- YAML
@@ -3859,7 +4013,9 @@ added: v25.0.0
 
 * Type: {number}
 
-Number of times the test has been attempted.
+The attempt number of the test. This value is zero-based, so the first attempt is `0`,
+the second attempt is `1`, and so on. This property is useful in conjunction with the
+`--test-rerun-failures` option to determine which attempt the test is currently running.
 
 ### `context.workerId`
 
@@ -4213,6 +4369,45 @@ added:
 * Type: {AbortSignal}
 
 Can be used to abort test subtasks when the test has been aborted.
+
+### `context.passed`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* Type: {boolean}
+
+Indicates whether the suite and all of its subtests have passed.
+
+### `context.attempt`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* Type: {number}
+
+The attempt number of the suite. This value is zero-based, so the first attempt is `0`,
+the second attempt is `1`, and so on. This property is useful in conjunction with the
+`--test-rerun-failures` option to determine the attempt number of the current run.
+
+### `context.diagnostic(message)`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* `message` {string} A diagnostic message to output.
+
+Output a diagnostic message. This is typically used for logging information
+about the current suite or its tests.
+
+```js
+test.describe('my suite', (suite) => {
+  suite.diagnostic('Suite diagnostic message');
+});
+```
 
 [TAP]: https://testanything.org/
 [`--experimental-test-coverage`]: cli.md#--experimental-test-coverage
