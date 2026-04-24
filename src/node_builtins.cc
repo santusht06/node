@@ -140,12 +140,13 @@ BuiltinLoader::BuiltinCategories BuiltinLoader::GetBuiltinCategories() const {
         "internal/quic/quic", "internal/quic/symbols", "internal/quic/stats",
         "internal/quic/state",
 #endif                  // !OPENSSL_NO_QUIC
+        "ffi",          // Experimental.
         "quic",         // Experimental.
         "sqlite",       // Experimental.
         "stream/iter",  // Experimental.
-        "zlib/iter",    // Experimental.
         "sys",          // Deprecated.
         "wasi",         // Experimental.
+        "zlib/iter",    // Experimental.
 #if !HAVE_SQLITE
         "internal/webstorage",  // Experimental.
         "internal/inspector/webstorage",
@@ -746,7 +747,7 @@ MaybeLocal<Module> BuiltinLoader::LoadBuiltinSourceTextModule(Realm* realm,
   // Pre-fetch all dependencies.
   if (requests->Length() > 0) {
     for (int i = 0; i < requests->Length(); i++) {
-      Local<ModuleRequest> req = requests->Get(context, i).As<ModuleRequest>();
+      Local<ModuleRequest> req = requests->Get(i).As<ModuleRequest>();
       std::string specifier =
           Utf8Value(isolate, req->GetSpecifier()).ToString();
       std::string resolved_id = ResolveRequestForBuiltin(specifier);

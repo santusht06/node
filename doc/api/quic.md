@@ -204,6 +204,12 @@ added: v23.8.0
 
 True if `endpoint.destroy()` has been called. Read only.
 
+### `endpoint.listening`
+
+* Type: {boolean}
+
+True if the endpoint is actively listening for incoming connections. Read only.
+
 ### `endpoint.setSNIContexts(entries[, options])`
 
 <!-- YAML
@@ -1243,7 +1249,9 @@ True to enable TLS keylogging output.
 <!-- YAML
 added: v23.8.0
 changes:
-  - version: v25.9.0
+  - version:
+     - v25.9.0
+     - v24.15.0
     pr-url: https://github.com/nodejs/node/pull/62335
     description: CryptoKey is no longer accepted.
 -->

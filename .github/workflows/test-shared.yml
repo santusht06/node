@@ -176,7 +176,7 @@ jobs:
 
       - name: Configure sccache
         if: github.base_ref == 'main' || github.ref_name == 'main'
-        uses: actions/github-script@ed597411d8f924073f98dfc5c65a23a2325f34cd  # v8.0.0
+        uses: actions/github-script@3a2844b7e9c422d3c10d287c895573f7108da1b3  # v9.0.0
         with:
           script: |
             core.exportVariable('SCCACHE_GHA_ENABLED', 'on');
@@ -196,7 +196,7 @@ jobs:
             --arg ccache "${NIX_SCCACHE:-null}" \
             --arg devTools '[]' \
             --arg benchmarkTools '[]' \
-            ${{ endsWith(matrix.system, '-darwin') && '--arg withAmaro false --arg withLief false --arg withSQLite false --arg extraConfigFlags ''["--without-inspector" "--without-node-options"]'' \' || '\' }}
+            ${{ endsWith(matrix.system, '-darwin') && '--arg withAmaro false --arg withLief false --arg withSQLite false --arg withFFI false --arg extraConfigFlags ''["--without-inspector" "--without-node-options"]'' \' || '\' }}
             --run '
                 make -C "$TAR_DIR" run-ci -j4 V=1 TEST_CI_ARGS="-p actions --measure-flakiness 9 --skip-tests=$CI_SKIP_TESTS"
             ' "$TAR_DIR/shell.nix"
