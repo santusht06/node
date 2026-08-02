@@ -6,9 +6,12 @@
     'v8_enable_31bit_smis_on_64bit_arch%': 0,
     'force_dynamic_crt%': 0,
     'node_builtin_modules_path%': '',
+    # `node` executable target name.
     'node_core_target_name%': 'node',
-    'node_enable_v8_vtunejit%': 'false',
-    'node_intermediate_lib_type%': 'static_library',
+    # `libnode` target type, `static_library` if `node_shared` is false and `shared_library` if `node_shared` is true.
+    'node_lib_type%': 'static_library',
+    # `libnode` target name, can be a `static_library` or `shared_library` based on `node_shared`.
+    # NOTE: Gyp will prefix this with `lib` if this name does not start with `lib`.
     'node_lib_target_name%': 'libnode',
     'node_module_version%': '',
     'node_no_browser_globals%': 'false',
@@ -37,9 +40,11 @@
     'node_use_node_snapshot%': 'false',
     'node_use_openssl%': 'true',
     'node_use_quic%': 'false',
+    'node_use_dtls%': 'false',
     'node_use_sqlite%': 'true',
     'node_use_ffi%': 'false',
     'node_use_v8_platform%': 'true',
+    'node_enable_v8_vtunejit%': 'false',
     'node_v8_options%': '',
     'node_write_snapshot_as_string_literals': 'true',
     'ossfuzz' : 'false',
@@ -131,6 +136,7 @@
       'src/node_http_parser.cc',
       'src/node_http2.cc',
       'src/node_i18n.cc',
+      'src/node_ipc_serdes.cc',
       'src/node_locks.cc',
       'src/node_main_instance.cc',
       'src/node_messaging.cc',
@@ -141,6 +147,7 @@
       'src/node_os.cc',
       'src/node_perf.cc',
       'src/node_platform.cc',
+      'src/node_profiling.cc',
       'src/node_postmortem_metadata.cc',
       'src/node_process_events.cc',
       'src/node_process_methods.cc',
@@ -193,9 +200,7 @@
       'src/timers.cc',
       'src/timer_wrap.cc',
       'src/tracing/agent.cc',
-      'src/tracing/node_trace_buffer.cc',
-      'src/tracing/node_trace_writer.cc',
-      'src/tracing/trace_event.cc',
+      'src/tracing/trace_event_helper.cc',
       'src/tracing/traced_value.cc',
       'src/tty_wrap.cc',
       'src/udp_wrap.cc',
@@ -283,6 +288,7 @@
       'src/node_perf.h',
       'src/node_perf_common.h',
       'src/node_platform.h',
+      'src/node_profiling.h',
       'src/node_process.h',
       'src/node_process-inl.h',
       'src/node_realm.h',
@@ -330,10 +336,8 @@
       'src/tcp_wrap.h',
       'src/timers.h',
       'src/tracing/agent.h',
-      'src/tracing/node_trace_buffer.h',
-      'src/tracing/node_trace_writer.h',
+      'src/tracing/trace_event_helper.h',
       'src/tracing/trace_event.h',
-      'src/tracing/trace_event_common.h',
       'src/tracing/traced_value.h',
       'src/timer_wrap.h',
       'src/timer_wrap-inl.h',
@@ -346,7 +350,6 @@
       'src/quic/bindingdata.cc',
       'src/quic/cid.cc',
       'src/quic/data.cc',
-      'src/quic/logstream.cc',
       'src/quic/packet.cc',
       'src/quic/preferredaddress.cc',
       'src/quic/sessionticket.cc',
@@ -355,6 +358,7 @@
       'src/quic/endpoint.cc',
       'src/quic/http3.cc',
       'src/quic/session.cc',
+      'src/quic/session_manager.cc',
       'src/quic/streams.cc',
       'src/quic/tlscontext.cc',
       'src/quic/transportparams.cc',
@@ -364,7 +368,6 @@
       'src/quic/cid.h',
       'src/quic/data.h',
       'src/quic/defs.h',
-      'src/quic/logstream.h',
       'src/quic/packet.h',
       'src/quic/preferredaddress.h',
       'src/quic/sessionticket.h',
@@ -374,9 +377,20 @@
       'src/quic/endpoint.h',
       'src/quic/http3.h',
       'src/quic/session.h',
+      'src/quic/session_manager.h',
       'src/quic/streams.h',
       'src/quic/tlscontext.h',
       'src/quic/guard.h',
+    ],
+    'node_dtls_sources': [
+      'src/dtls/dtls.cc',
+      'src/dtls/dtls_context.cc',
+      'src/dtls/dtls_endpoint.cc',
+      'src/dtls/dtls_session.cc',
+      'src/dtls/dtls.h',
+      'src/dtls/dtls_context.h',
+      'src/dtls/dtls_endpoint.h',
+      'src/dtls/dtls_session.h',
     ],
     'node_crypto_sources': [
       'src/crypto/crypto_aes.cc',
@@ -440,6 +454,22 @@
       'src/node_crypto.cc',
       'src/node_crypto.h',
     ],
+    'node_tracing_perfetto_sources': [
+      'src/tracing/agent_perfetto.cc',
+      'src/tracing/agent_perfetto.h',
+      'src/tracing/trace_event_perfetto.cc',
+      'src/tracing/trace_event_perfetto.h',
+    ],
+    'node_tracing_legacy_sources': [
+      'src/tracing/agent_legacy.cc',
+      'src/tracing/agent_legacy.h',
+      'src/tracing/node_trace_buffer.cc',
+      'src/tracing/node_trace_buffer.h',
+      'src/tracing/node_trace_writer.cc',
+      'src/tracing/node_trace_writer.h',
+      'src/tracing/trace_event_legacy_inl.h',
+      'src/tracing/trace_event_legacy.h',
+    ],
     'node_cctest_openssl_sources': [
       'test/cctest/test_crypto_clienthello.cc',
       'test/cctest/test_node_crypto.cc',
@@ -450,6 +480,7 @@
       'test/cctest/test_quic_cid.cc',
       'test/cctest/test_quic_error.cc',
       'test/cctest/test_quic_preferredaddress.cc',
+      'test/cctest/test_quic_tokenbucket.cc',
       'test/cctest/test_quic_tokens.cc',
     ],
     'node_cctest_inspector_sources': [
@@ -467,8 +498,18 @@
     'node_ffi_sources': [
       'src/node_ffi.cc',
       'src/node_ffi.h',
+      'src/ffi/platforms/arm64.cc',
+      'src/ffi/platforms/loong64.cc',
+      'src/ffi/platforms/ppc64.cc',
+      'src/ffi/platforms/riscv64.cc',
+      'src/ffi/platforms/s390x.cc',
+      'src/ffi/platforms/x64.cc',
       'src/ffi/data.cc',
       'src/ffi/data.h',
+      'src/ffi/fast.cc',
+      'src/ffi/fast.h',
+      'src/ffi/jit_memory.cc',
+      'src/ffi/jit_memory.h',
       'src/ffi/types.cc',
       'src/ffi/types.h',
     ],
@@ -482,17 +523,7 @@
       }],
       [ 'node_shared=="true"', {
         'node_target_type%': 'shared_library',
-        'conditions': [
-          ['OS in "aix os400"', {
-            # For AIX, always generate static library first,
-            # It needs an extra step to generate exp and
-            # then use both static lib and exp to create
-            # shared lib.
-            'node_intermediate_lib_type': 'static_library',
-          }, {
-            'node_intermediate_lib_type': 'shared_library',
-          }],
-        ],
+        'node_lib_type': 'shared_library',
       }, {
         'node_target_type%': 'executable',
       }],
@@ -604,6 +635,10 @@
         'src/node_main.cc'
       ],
 
+      'dependencies': [
+        '<(node_lib_target_name)',
+      ],
+
       'msvs_settings': {
         'VCLinkerTool': {
           'GenerateMapFile': 'true', # /MAP
@@ -636,36 +671,25 @@
             'WARNING_CFLAGS': [ '-Werror' ],
           },
         }],
-        [ 'node_intermediate_lib_type=="static_library" and '
-            'node_shared=="true" and OS in "aix os400"', {
-          # For AIX, shared lib is linked by static lib and .exp. In the
-          # case here, the executable needs to link to shared lib.
-          # Therefore, use 'node_aix_shared' target to generate the
-          # shared lib and then executable.
-          'dependencies': [ 'node_aix_shared' ],
-        }, {
-          'dependencies': [ '<(node_lib_target_name)' ],
-          'conditions': [
-            ['OS=="win" and node_shared=="true"', {
-              'dependencies': ['generate_node_def'],
-              'msvs_settings': {
-                'VCLinkerTool': {
-                  'ModuleDefinitionFile': '<(PRODUCT_DIR)/<(node_core_target_name).def',
-                },
-              },
-            }],
-          ],
+        ['node_shared=="true" and OS=="win"', {
+          'dependencies': ['generate_node_def'],
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'ModuleDefinitionFile': '<(PRODUCT_DIR)/<(node_core_target_name).def',
+            },
+          },
         }],
-        [ 'node_intermediate_lib_type=="static_library" and node_shared=="false"', {
+        [ 'node_shared=="false"', {
+          # Keep this whole-archive section in sync with the `node_lib` target below.
           'xcode_settings': {
             'OTHER_LDFLAGS': [
-              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)<(node_core_target_name)<(STATIC_LIB_SUFFIX)',
+              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)node_base<(STATIC_LIB_SUFFIX)',
             ],
           },
           'msvs_settings': {
             'VCLinkerTool': {
               'AdditionalOptions': [
-                '/WHOLEARCHIVE:<(PRODUCT_DIR)/lib/<(node_lib_target_name)<(STATIC_LIB_SUFFIX)',
+                '/WHOLEARCHIVE:<(PRODUCT_DIR)/lib/<(STATIC_LIB_PREFIX)node_base<(STATIC_LIB_SUFFIX)',
                 '/WHOLEARCHIVE:<(PRODUCT_DIR)/lib/<(STATIC_LIB_PREFIX)v8_base_without_compiler<(STATIC_LIB_SUFFIX)',
               ],
             },
@@ -681,7 +705,7 @@
             ['node_use_bundled_v8=="true" and OS != "aix" and OS != "os400" and OS != "mac" and OS != "ios"', {
               'ldflags': [
                 '-Wl,--whole-archive',
-                '<(obj_dir)/<(STATIC_LIB_PREFIX)<(node_core_target_name)<(STATIC_LIB_SUFFIX)',
+                '<(obj_dir)/<(STATIC_LIB_PREFIX)node_base<(STATIC_LIB_SUFFIX)',
                 '<(obj_dir)/tools/v8_gypfiles/<(STATIC_LIB_PREFIX)v8_base_without_compiler<(STATIC_LIB_SUFFIX)',
                 '-Wl,--no-whole-archive',
               ],
@@ -689,7 +713,7 @@
             ['node_use_bundled_v8!="true" and OS != "aix" and OS != "os400" and OS != "mac" and OS != "ios"', {
               'ldflags': [
                 '-Wl,--whole-archive',
-                '<(obj_dir)/<(STATIC_LIB_PREFIX)<(node_core_target_name)<(STATIC_LIB_SUFFIX)',
+                '<(obj_dir)/<(STATIC_LIB_PREFIX)node_base<(STATIC_LIB_SUFFIX)',
                 '-Wl,--no-whole-archive',
               ],
             }],
@@ -757,55 +781,6 @@
               'LinkIncremental': 2,                # enable incremental linking
             },
           },
-        }],
-         ['node_use_node_snapshot=="true"', {
-          'dependencies': [
-            'node_mksnapshot',
-          ],
-          'conditions': [
-            ['node_snapshot_main!=""', {
-              'actions': [
-                {
-                  'action_name': 'node_mksnapshot',
-                  'process_outputs_as_sources': 1,
-                  'inputs': [
-                    '<(node_mksnapshot_exec)',
-                    '<(node_snapshot_main)',
-                  ],
-                  'outputs': [
-                    '<(SHARED_INTERMEDIATE_DIR)/node_snapshot.cc',
-                  ],
-                  'action': [
-                    '<(node_mksnapshot_exec)',
-                    '--build-snapshot',
-                    '<(node_snapshot_main)',
-                    '<@(_outputs)',
-                  ],
-                },
-              ],
-            }, {
-              'actions': [
-                {
-                  'action_name': 'node_mksnapshot',
-                  'process_outputs_as_sources': 1,
-                  'inputs': [
-                    '<(node_mksnapshot_exec)',
-                  ],
-                  'outputs': [
-                    '<(SHARED_INTERMEDIATE_DIR)/node_snapshot.cc',
-                  ],
-                  'action': [
-                    '<@(_inputs)',
-                    '<@(_outputs)',
-                  ],
-                },
-              ],
-            }],
-          ],
-          }, {
-          'sources': [
-            'src/node_snapshot_stub.cc'
-          ],
         }],
         [ 'OS in "linux freebsd openharmony" and '
           'target_arch=="x64"', {
@@ -899,8 +874,8 @@
       ],
     }, # node_core_target_name
     {
-      'target_name': '<(node_lib_target_name)',
-      'type': '<(node_intermediate_lib_type)',
+      'target_name': 'node_base',
+      'type': 'static_library',
       'includes': [
         'node.gypi',
       ],
@@ -919,9 +894,6 @@
         # Dependency headers
         'deps/v8/include/v8.h',
         'deps/postject/postject-api.h',
-        # javascript files to make for an even more pleasant IDE experience
-        '<@(library_files)',
-        '<@(deps_files)',
         # node.gyp is added by default, common.gypi is added for change detection
         'common.gypi',
       ],
@@ -965,17 +937,6 @@
         }],
         [ 'node_builtin_modules_path!=""', {
           'defines': [ 'NODE_BUILTIN_MODULES_PATH="<(node_builtin_modules_path)"' ],
-          # When loading builtins from disk, JS source files do not need to
-          # trigger rebuilds since the binary reads them at runtime.
-          'sources!': [
-            '<@(library_files)',
-            '<@(deps_files)',
-          ],
-        }],
-        [ 'node_shared=="true"', {
-          'sources': [
-            'src/node_snapshot_stub.cc',
-          ]
         }],
         [ 'node_use_bundled_v8!="false"', {
           'dependencies': [ 'tools/v8_gypfiles/abseil.gyp:abseil' ],
@@ -1012,20 +973,17 @@
             }],
           ],
         }],
-        [ 'node_shared=="true" and node_module_version!="" and OS!="win"', {
-          'product_extension': '<(shlib_suffix)',
-          'xcode_settings': {
-            'LD_DYLIB_INSTALL_NAME':
-              '@rpath/lib<(node_core_target_name).<(shlib_suffix)'
-          },
-        }],
-        [ 'node_use_node_code_cache=="true"', {
-          'defines': [
-            'NODE_USE_NODE_CODE_CACHE=1',
+        [ 'v8_use_perfetto==1', {
+          'sources': [
+            '<@(node_tracing_perfetto_sources)',
           ],
-        }],
-        ['node_shared=="true" and OS in "aix os400"', {
-          'product_name': 'node_base',
+          'dependencies': [
+            'deps/perfetto/perfetto.gyp:perfetto_sdk',
+          ],
+        }, {
+          'sources': [
+            '<@(node_tracing_legacy_sources)',
+          ],
         }],
         [ 'v8_enable_inspector==1', {
           'includes' : [ 'src/inspector/node_inspector.gypi' ],
@@ -1033,13 +991,6 @@
           'defines': [ 'HAVE_INSPECTOR=0' ]
         }],
         [ 'OS=="win"', {
-          'conditions': [
-            [ 'node_intermediate_lib_type!="static_library"', {
-              'sources': [
-                'src/res/node.rc',
-              ],
-            }],
-          ],
           'libraries': [
             'Dbghelp',
             'Psapi',
@@ -1062,26 +1013,17 @@
         [ 'node_use_lief=="true" and node_shared_lief=="true"', {
           'defines': [ 'HAVE_LIEF=1' ],
         }],
-        [ 'node_use_sqlite=="true"', {
-          'sources': [
-            '<@(node_sqlite_sources)',
-          ],
-        }],
-        [ 'node_use_ffi=="true"', {
-          'sources': [
-            '<@(node_ffi_sources)',
-          ],
-          'conditions': [
-            [ 'node_shared_ffi=="false"', {
-              'dependencies': [
-                'deps/libffi/libffi.gyp:libffi',
-              ],
-            }],
-          ],
-        }],
         [ 'node_use_quic=="true"', {
           'sources': [
             '<@(node_quic_sources)',
+          ],
+        }],
+        [ 'node_use_dtls=="true"', {
+          'sources': [
+            '<@(node_dtls_sources)',
+          ],
+          'defines': [
+            'HAVE_DTLS=1',
           ],
         }],
         [ 'OS in "linux freebsd mac solaris openharmony" and '
@@ -1138,7 +1080,7 @@
         [ 'debug_nghttp2==1', {
           'defines': [ 'NODE_DEBUG_NGHTTP2=1' ]
         }],
-        # Thin LTO for node sources (scoped to libnode, not global)
+        # Thin LTO for node sources (scoped to node_base, not global)
         ['node_with_ltcg=="true"', {
           'msvs_settings': {
             'VCCLCompilerTool': {
@@ -1174,6 +1116,7 @@
             '<(SHARED_INTERMEDIATE_DIR)/node_javascript.cc',
           ],
           'action': [
+            '<@(emulator)',
             '<(node_js2c_exec)',
             '<@(_outputs)',
             'lib',
@@ -1182,6 +1125,142 @@
             '<@(linked_module_files)',
           ],
         },
+      ],
+    }, # node_base
+    {
+      'target_name': '<(node_lib_target_name)',
+      'type': '<(node_lib_type)',
+      'includes': [
+        'node.gypi',
+      ],
+
+      'include_dirs': [
+        'src',
+        'deps/v8/include',
+        'deps/uv/include',
+      ],
+
+      'dependencies': [
+        'node_base',
+      ],
+
+      'defines': [
+        'NODE_ARCH="<(target_arch)"',
+        'NODE_PLATFORM="<(OS)"',
+        'NODE_WANT_INTERNALS=1',
+      ],
+
+      'sources': [
+        # javascript files to make for an even more pleasant IDE experience
+        '<@(library_files)',
+        '<@(deps_files)',
+      ],
+
+      'conditions': [
+        [ 'node_builtin_modules_path!=""', {
+          # When loading builtins from disk, JS source files do not need to
+          # trigger rebuilds since the binary reads them at runtime.
+          'sources!': [
+            '<@(library_files)',
+            '<@(deps_files)',
+          ],
+        }],
+        ['node_use_node_snapshot=="true"', {
+          'dependencies': [
+            'node_mksnapshot',
+          ],
+          'conditions': [
+            ['node_snapshot_main!=""', {
+              'actions': [
+                {
+                  'action_name': 'node_mksnapshot',
+                  'process_outputs_as_sources': 1,
+                  'inputs': [
+                    '<(node_mksnapshot_exec)',
+                    '<(node_snapshot_main)',
+                  ],
+                  'outputs': [
+                    '<(SHARED_INTERMEDIATE_DIR)/node_snapshot.cc',
+                  ],
+                  'action': [
+                    '<@(emulator)',
+                    '<(node_mksnapshot_exec)',
+                    '--build-snapshot',
+                    '<(node_snapshot_main)',
+                    '<@(_outputs)',
+                  ],
+                },
+              ],
+            }, {
+              'actions': [
+                {
+                  'action_name': 'node_mksnapshot',
+                  'process_outputs_as_sources': 1,
+                  'inputs': [
+                    '<(node_mksnapshot_exec)',
+                  ],
+                  'outputs': [
+                    '<(SHARED_INTERMEDIATE_DIR)/node_snapshot.cc',
+                  ],
+                  'action': [
+                    '<@(emulator)',
+                    '<@(_inputs)',
+                    '<@(_outputs)',
+                  ],
+                },
+              ],
+            }],
+          ],
+          }, {
+          'sources': [
+            'src/node_snapshot_stub.cc'
+          ],
+        }],
+        [ 'node_shared=="true"', {
+          # Keep this whole-archive section in sync with the `node_exe` target above.
+          'xcode_settings': {
+            'OTHER_LDFLAGS': [
+              '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)node_base<(STATIC_LIB_SUFFIX)',
+            ],
+          },
+          'msvs_settings': {
+            'VCLinkerTool': {
+              'AdditionalOptions': [
+                '/WHOLEARCHIVE:<(PRODUCT_DIR)/lib/<(STATIC_LIB_PREFIX)node_base<(STATIC_LIB_SUFFIX)',
+                '/WHOLEARCHIVE:<(PRODUCT_DIR)/lib/<(STATIC_LIB_PREFIX)v8_base_without_compiler<(STATIC_LIB_SUFFIX)',
+              ],
+            },
+          },
+          'conditions': [
+            ['node_use_bundled_v8=="true"', {
+              'xcode_settings': {
+                'OTHER_LDFLAGS': [
+                  '-Wl,-force_load,<(PRODUCT_DIR)/<(STATIC_LIB_PREFIX)v8_base_without_compiler<(STATIC_LIB_SUFFIX)',
+                ],
+              },
+            }],
+            # gyp automatically applies `--whole-archive` to static dependencies of `shared_library` targets.
+            # No need to add the flags again here.
+          ],
+        }],
+        [ 'node_shared=="true" and node_module_version!="" and OS!="win"', {
+          'product_extension': '<(shlib_suffix)',
+          'xcode_settings': {
+            'LD_DYLIB_INSTALL_NAME':
+              '@rpath/lib<(node_core_target_name).<(shlib_suffix)'
+          },
+        }],
+        ['node_shared=="true" and OS in "aix os400"', {
+          'ldflags': ['--shared'],
+          'direct_dependent_settings': {
+            'ldflags': [ '-Wl,-brtl' ],
+          },
+        }],
+        [ 'node_shared=="true" and OS=="win"', {
+          'sources': [
+            'src/res/node.rc',
+          ],
+        }],
       ],
     }, # node_lib_target_name
     { # fuzz_env
@@ -1209,7 +1288,6 @@
         'NODE_WANT_INTERNALS=1',
       ],
       'sources': [
-        'src/node_snapshot_stub.cc',
         'test/fuzzers/fuzz_env.cc',
       ],
       'conditions': [
@@ -1254,7 +1332,6 @@
         'NODE_WANT_INTERNALS=1',
       ],
       'sources': [
-        'src/node_snapshot_stub.cc',
         'test/fuzzers/fuzz_ClientHelloParser.cc',
       ],
       'conditions': [
@@ -1303,7 +1380,6 @@
         'NODE_WANT_INTERNALS=1',
       ],
       'sources': [
-        'src/node_snapshot_stub.cc',
         'test/fuzzers/fuzz_strings.cc',
       ],
       'conditions': [
@@ -1408,6 +1484,11 @@
         }, {
           'sources!': [ '<@(node_cctest_quic_sources)' ],
         }],
+        [ 'v8_use_perfetto==1', {
+          'dependencies': [
+            'deps/perfetto/perfetto.gyp:perfetto_sdk',
+          ],
+        }],
         ['v8_enable_inspector==1', {
           'defines': [
             'HAVE_INSPECTOR=1',
@@ -1485,7 +1566,6 @@
       ],
 
       'sources': [
-        'src/node_snapshot_stub.cc',
         'test/embedding/embedtest.cc',
       ],
 
@@ -1675,7 +1755,7 @@
       'type': 'executable',
 
       'dependencies': [
-        '<(node_lib_target_name)',
+        'node_base',
       ],
 
       'includes': [
@@ -1730,6 +1810,11 @@
             'NODE_USE_NODE_CODE_CACHE=1',
           ],
         }],
+        [ 'v8_use_perfetto==1', {
+          'dependencies': [
+            'deps/perfetto/perfetto.gyp:perfetto_sdk',
+          ],
+        }],
         ['v8_enable_inspector==1', {
           'defines': [
             'HAVE_INSPECTOR=1',
@@ -1761,33 +1846,6 @@
   ], # end targets
 
   'conditions': [
-    ['OS in "aix os400" and node_shared=="true"', {
-      'targets': [
-        {
-          'target_name': 'node_aix_shared',
-          'type': 'shared_library',
-          'product_name': '<(node_core_target_name)',
-          'ldflags': ['--shared'],
-          'product_extension': '<(shlib_suffix)',
-          'includes': [
-            'node.gypi'
-          ],
-          'dependencies': ['<(node_lib_target_name)'],
-          'include_dirs': [
-            'src',
-            'deps/v8/include',
-          ],
-          'sources': [
-            '<@(library_files)',
-            '<@(deps_files)',
-            'common.gypi',
-          ],
-          'direct_dependent_settings': {
-            'ldflags': [ '-Wl,-brtl' ],
-          },
-        },
-      ]
-    }], # end aix section
     ['OS=="win" and node_shared=="true"', {
      'targets': [
        {
@@ -1814,6 +1872,7 @@
                '<(PRODUCT_DIR)/<(node_core_target_name).def',
              ],
              'action': [
+               '<@(emulator)',
                '<(PRODUCT_DIR)/gen_node_def.exe',
                '<@(_inputs)',
                '<@(_outputs)',

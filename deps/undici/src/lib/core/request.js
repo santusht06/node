@@ -28,6 +28,21 @@ const { headerNameLowerCasedRecord } = require('./constants')
 // Verifies that a given path is valid does not contain control chars \x00 to \x20
 const invalidPathRegex = /[^\u0021-\u00ff]/
 
+function isValidContentLengthHeaderValue (val) {
+  if (typeof val !== 'string' || val.length === 0) {
+    return false
+  }
+
+  for (let i = 0; i < val.length; i++) {
+    const charCode = val.charCodeAt(i)
+    if (charCode < 48 || charCode > 57) {
+      return false
+    }
+  }
+
+  return true
+}
+
 const kHandler = Symbol('handler')
 const kController = Symbol('controller')
 const kResume = Symbol('resume')
@@ -158,7 +173,7 @@ class Request {
 
     this.method = method
 
-    this.typeOfService = typeOfService ?? 0
+    this.typeOfService = typeOfService
 
     this.abort = null
 
@@ -210,7 +225,7 @@ class Request {
     this.protocol = getProtocolFromUrlString(origin)
 
     this.idempotent = idempotent == null
-      ? method === 'HEAD' || method === 'GET'
+      ? method === 'HEAD' || method === 'GET' || method === 'QUERY'
       : idempotent
 
     this.blocking = blocking ?? this.method !== 'HEAD'
@@ -457,7 +472,13 @@ function processHeader (request, key, val) {
       } else if (typeof val[i] === 'object') {
         throw new InvalidArgumentError(`invalid ${key} header`)
       } else {
-        arr.push(`${val[i]}`)
+        // Coerce primitives (and reject unsafe coercions such as functions
+        // with a crafted toString/Symbol.toPrimitive).
+        const str = `${val[i]}`
+        if (!isValidHeaderValue(str)) {
+          throw new InvalidArgumentError(`invalid ${key} header`)
+        }
+        arr.push(str)
       }
     }
     val = arr
@@ -468,7 +489,12 @@ function processHeader (request, key, val) {
   } else if (val === null) {
     val = ''
   } else {
+    // Coerce primitives (and reject unsafe coercions such as functions
+    // with a crafted toString/Symbol.toPrimitive).
     val = `${val}`
+    if (!isValidHeaderValue(val)) {
+      throw new InvalidArgumentError(`invalid ${key} header`)
+    }
   }
 
   if (headerName === 'host') {
@@ -484,10 +510,10 @@ function processHeader (request, key, val) {
     if (request.contentLength !== null) {
       throw new InvalidArgumentError('duplicate content-length header')
     }
-    request.contentLength = parseInt(val, 10)
-    if (!Number.isFinite(request.contentLength)) {
+    if (!isValidContentLengthHeaderValue(val)) {
       throw new InvalidArgumentError('invalid content-length header')
     }
+    request.contentLength = parseInt(val, 10)
   } else if (request.contentType === null && headerName === 'content-type') {
     request.contentType = val
     request.headers.push(key, val)

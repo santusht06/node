@@ -327,7 +327,7 @@ destructuring and call methods directly on the instance.
 <!-- YAML
 added: v0.5.9
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
 -->
@@ -342,7 +342,7 @@ An alias of [`assert.ok()`][].
 <!-- YAML
 added: v0.1.21
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version: v25.0.0
@@ -612,6 +612,7 @@ are recursively evaluated also by the following rules.
 * [`[[Prototype]]`][prototype-spec] of objects are compared using
   the [`===` operator][].
 * Only [enumerable "own" properties][] are considered.
+* Object constructors are compared when available.
 * {Error} names, messages, causes, and errors are always compared,
   even if these are not enumerable properties.
   `errors` is also compared.
@@ -861,7 +862,7 @@ added:
   - v13.6.0
   - v12.16.0
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version: v16.0.0
@@ -1104,7 +1105,7 @@ assert.doesNotThrow(
 <!-- YAML
 added: v0.1.21
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version:
@@ -1292,7 +1293,7 @@ added:
   - v13.6.0
   - v12.16.0
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version: v16.0.0
@@ -1344,7 +1345,7 @@ instance of {Error} then it will be thrown instead of the
 <!-- YAML
 added: v0.1.21
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version:
@@ -1471,7 +1472,7 @@ instead of the `AssertionError`.
 <!-- YAML
 added: v1.2.0
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version: v9.0.0
@@ -1534,7 +1535,7 @@ instead of the [`AssertionError`][].
 <!-- YAML
 added: v0.1.21
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version:
@@ -1601,7 +1602,7 @@ parameter is an instance of {Error} then it will be thrown instead of the
 <!-- YAML
 added: v0.1.21
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version: v10.0.0
@@ -1657,7 +1658,7 @@ instead of the `AssertionError`.
 <!-- YAML
 added: v0.1.21
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version: v10.0.0
@@ -1683,7 +1684,7 @@ If no arguments are passed in at all `message` will be set to the string:
 Be aware that in the `repl` the error message will be different to the one
 thrown in a file! See below for further details.
 
-<!-- eslint-skip -->
+<!-- eslint-disable no-restricted-syntax -->
 
 ```mjs
 import assert from 'node:assert/strict';
@@ -1720,7 +1721,7 @@ assert.ok(0);
 //   assert.ok(0)
 ```
 
-<!-- eslint-skip -->
+<!-- eslint-disable no-restricted-syntax -->
 
 ```cjs
 const assert = require('node:assert/strict');
@@ -1904,7 +1905,7 @@ argument gets considered.
 <!-- YAML
 added: v0.1.21
 changes:
-  - version: REPLACEME
+  - version: v26.0.0
     pr-url: https://github.com/nodejs/node/pull/58849
     description: Message may now be a `printf`-like format string or function.
   - version: v10.0.0
