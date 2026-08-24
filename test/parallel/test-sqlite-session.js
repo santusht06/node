@@ -81,6 +81,22 @@ test('session.changeset() - closed database results in exception', (t) => {
   });
 });
 
+test('session methods - reopened database results in exception', (t) => {
+  for (const method of ['changeset', 'close']) {
+    const database = new DatabaseSync(':memory:');
+    const session = database.createSession();
+    database.close();
+    database.open();
+
+    t.assert.throws(() => {
+      session[method]();
+    }, {
+      name: 'Error',
+      message: 'session is not open',
+    });
+  }
+});
+
 test('database.applyChangeset() - closed database results in exception', (t) => {
   const database = new DatabaseSync(':memory:');
   const session = database.createSession();
@@ -388,6 +404,13 @@ test('filter handler throws', (t) => {
     name: 'Error',
     message: 'Error filtering table data1'
   });
+
+  t.assert.throws(() => {
+    database2.exec('CREATE TABLEEEE');
+  }, {
+    code: 'ERR_SQLITE_ERROR',
+    message: /syntax error/,
+  });
 });
 
 test('database.createSession() - filter changes', (t) => {
@@ -587,6 +610,28 @@ test('session.close() - closing twice', (t) => {
     name: 'Error',
     message: 'session is not open'
   });
+});
+
+test('session.close() - while generating changes throws exception', (t) => {
+  for (const method of ['changeset', 'patchset']) {
+    const database = new DatabaseSync(':memory:');
+    database.exec('CREATE TABLE data(key INTEGER PRIMARY KEY, value TEXT)');
+
+    const session = database.createSession({ table: 'data' });
+    database.exec("INSERT INTO data VALUES (1, 'a'), (2, 'b'), (3, 'c')");
+    database.setAuthorizer(() => {
+      session.close();
+      return constants.SQLITE_OK;
+    });
+
+    t.assert.throws(() => session[method](), {
+      code: 'ERR_INVALID_STATE',
+      message: 'session is currently in use',
+    });
+
+    database.setAuthorizer(null);
+    t.assert.notStrictEqual(session[method]().length, 0);
+  }
 });
 
 test('session - keeps its database alive after the db handle is dropped', async (t) => {

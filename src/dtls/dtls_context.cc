@@ -4,6 +4,8 @@
 #if HAVE_OPENSSL && HAVE_DTLS
 
 #include <base_object-inl.h>
+#include <crypto/crypto_bio.h>
+#include <crypto/crypto_tls_certificates.h>
 #include <crypto/crypto_util.h>
 #include <env-inl.h>
 #include <memory_tracker-inl.h>
@@ -45,10 +47,10 @@ constexpr uint64_t kCookieWindowNs = 30ull * 1000 * 1000 * 1000;
 
 DTLSContext::DTLSContext(Environment* env,
                          Local<Object> wrap,
-                         SSL_CTX* ctx,
+                         ncrypto::SSLCtxPointer ctx,
                          bool is_server)
     : BaseObject(env, wrap),
-      ctx_(ctx),
+      ctx_(std::move(ctx)),
       is_server_(is_server),
       cookie_secret_(kCookieSecretLen) {
   MakeWeak();
@@ -135,22 +137,22 @@ void DTLSContext::New(const FunctionCallbackInfo<Value>& args) {
     method = DTLS_client_method();
   }
 
-  SSL_CTX* ctx = SSL_CTX_new(method);
-  if (ctx == nullptr) {
+  ncrypto::SSLCtxPointer ctx(SSL_CTX_new(method));
+  if (!ctx) {
     return THROW_ERR_CRYPTO_OPERATION_FAILED(env,
                                              "Failed to create DTLS SSL_CTX");
   }
 
   // Default to DTLS 1.2 only. DTLS 1.0 (based on TLS 1.1) is deprecated
   // by RFC 8996 and lacks AEAD cipher suites.
-  SSL_CTX_set_min_proto_version(ctx, DTLS1_2_VERSION);
-  SSL_CTX_set_max_proto_version(ctx, DTLS1_2_VERSION);
+  SSL_CTX_set_min_proto_version(ctx.get(), DTLS1_2_VERSION);
+  SSL_CTX_set_max_proto_version(ctx.get(), DTLS1_2_VERSION);
 
   // Disable OpenSSL's MTU querying (we manage MTU manually).
-  SSL_CTX_set_options(ctx, SSL_OP_NO_QUERY_MTU);
+  SSL_CTX_set_options(ctx.get(), SSL_OP_NO_QUERY_MTU);
 
   // Enable all workarounds for maximum compatibility.
-  SSL_CTX_set_options(ctx, SSL_OP_ALL);
+  SSL_CTX_set_options(ctx.get(), SSL_OP_ALL);
 
   if (is_server) {
     // NOTE: SSL_OP_COOKIE_EXCHANGE must NOT be set on the context.
@@ -160,11 +162,11 @@ void DTLSContext::New(const FunctionCallbackInfo<Value>& args) {
 
     // Enable session caching for session resumption.
     SSL_CTX_set_session_cache_mode(
-        ctx, SSL_SESS_CACHE_SERVER | SSL_SESS_CACHE_NO_AUTO_CLEAR);
+        ctx.get(), SSL_SESS_CACHE_SERVER | SSL_SESS_CACHE_NO_AUTO_CLEAR);
   } else {
     // Client session caching for resumption.
     SSL_CTX_set_session_cache_mode(
-        ctx, SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL);
+        ctx.get(), SSL_SESS_CACHE_CLIENT | SSL_SESS_CACHE_NO_INTERNAL);
   }
 
   // NOTE: We do NOT call SSL_CTX_set_default_verify_paths() here.
@@ -172,7 +174,7 @@ void DTLSContext::New(const FunctionCallbackInfo<Value>& args) {
   // those are loaded (via addCACert). Otherwise, system default CAs are
   // loaded via loadDefaultCAs(). This matches Node.js TLS behavior.
 
-  new DTLSContext(env, args.This(), ctx, is_server);
+  new DTLSContext(env, args.This(), std::move(ctx), is_server);
 }
 
 void DTLSContext::SetCert(const FunctionCallbackInfo<Value>& args) {
@@ -186,34 +188,16 @@ void DTLSContext::SetCert(const FunctionCallbackInfo<Value>& args) {
 
   Utf8Value cert_pem(env->isolate(), args[0]);
 
-  BIO* bio = BIO_new_mem_buf(*cert_pem, cert_pem.length());
-  if (bio == nullptr) {
-    return THROW_ERR_CRYPTO_OPERATION_FAILED(env, "BIO_new_mem_buf failed");
+  auto bio = crypto::NodeBIO::NewFixed(*cert_pem, cert_pem.length());
+  if (!bio) {
+    return THROW_ERR_CRYPTO_OPERATION_FAILED(env, "Failed to create BIO");
   }
 
-  X509* x509 = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr);
-  if (x509 == nullptr) {
-    BIO_free(bio);
+  ncrypto::X509Pointer cert;
+  ncrypto::X509Pointer issuer;
+  if (crypto::SSL_CTX_use_certificate_chain(
+          ctx->ctx_.get(), std::move(bio), &cert, &issuer) != 1) {
     return THROW_ERR_CRYPTO_OPERATION_FAILED(env, "PEM_read_bio_X509 failed");
-  }
-
-  int ret = SSL_CTX_use_certificate(ctx->ctx_.get(), x509);
-  X509_free(x509);
-
-  // Read any additional chain certificates.
-  while ((x509 = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr)) !=
-         nullptr) {
-    SSL_CTX_add_extra_chain_cert(ctx->ctx_.get(), x509);
-    // Note: SSL_CTX_add_extra_chain_cert takes ownership, don't free x509.
-  }
-
-  // Clear any error from the chain reading loop (expected EOF).
-  ERR_clear_error();
-  BIO_free(bio);
-
-  if (ret != 1) {
-    return THROW_ERR_CRYPTO_OPERATION_FAILED(env,
-                                             "SSL_CTX_use_certificate failed");
   }
 }
 
@@ -228,25 +212,20 @@ void DTLSContext::SetKey(const FunctionCallbackInfo<Value>& args) {
 
   Utf8Value key_pem(env->isolate(), args[0]);
 
-  BIO* bio = BIO_new_mem_buf(*key_pem, key_pem.length());
-  if (bio == nullptr) {
-    return THROW_ERR_CRYPTO_OPERATION_FAILED(env, "BIO_new_mem_buf failed");
+  auto bio = crypto::NodeBIO::NewFixed(*key_pem, key_pem.length());
+  if (!bio) {
+    return THROW_ERR_CRYPTO_OPERATION_FAILED(env, "Failed to create BIO");
   }
 
-  EVP_PKEY* pkey = PEM_read_bio_PrivateKey(bio, nullptr, nullptr, nullptr);
-  BIO_free(bio);
-
-  if (pkey == nullptr) {
-    return THROW_ERR_CRYPTO_OPERATION_FAILED(env,
-                                             "PEM_read_bio_PrivateKey failed");
-  }
-
-  int ret = SSL_CTX_use_PrivateKey(ctx->ctx_.get(), pkey);
-  EVP_PKEY_free(pkey);
-
-  if (ret != 1) {
-    return THROW_ERR_CRYPTO_OPERATION_FAILED(env,
-                                             "SSL_CTX_use_PrivateKey failed");
+  switch (crypto::UsePrivateKey(ctx->ctx_.get(), bio)) {
+    case crypto::PrivateKeyResult::kSuccess:
+      break;
+    case crypto::PrivateKeyResult::kParseError:
+      return THROW_ERR_CRYPTO_OPERATION_FAILED(
+          env, "PEM_read_bio_PrivateKey failed");
+    case crypto::PrivateKeyResult::kApplyError:
+      return THROW_ERR_CRYPTO_OPERATION_FAILED(env,
+                                               "SSL_CTX_use_PrivateKey failed");
   }
 
   // Verify that the private key matches the certificate.
@@ -267,24 +246,13 @@ void DTLSContext::AddCACert(const FunctionCallbackInfo<Value>& args) {
 
   Utf8Value ca_pem(env->isolate(), args[0]);
 
-  BIO* bio = BIO_new_mem_buf(*ca_pem, ca_pem.length());
-  if (bio == nullptr) {
-    return THROW_ERR_CRYPTO_OPERATION_FAILED(env, "BIO_new_mem_buf failed");
+  auto bio = crypto::NodeBIO::NewFixed(*ca_pem, ca_pem.length());
+  if (!bio) {
+    return THROW_ERR_CRYPTO_OPERATION_FAILED(env, "Failed to create BIO");
   }
 
-  X509_STORE* store = SSL_CTX_get_cert_store(ctx->ctx_.get());
-  X509* x509;
-  int count = 0;
-  while ((x509 = PEM_read_bio_X509(bio, nullptr, nullptr, nullptr)) !=
-         nullptr) {
-    X509_STORE_add_cert(store, x509);
-    X509_free(x509);
-    count++;
-  }
-  ERR_clear_error();
-  BIO_free(bio);
-
-  if (count == 0) {
+  ncrypto::ClearErrorOnReturn clear_error_on_return;
+  if (crypto::AddCACertificates(env, ctx->ctx_.get(), bio) == 0) {
     return THROW_ERR_CRYPTO_OPERATION_FAILED(
         env, "No CA certificates found in PEM data");
   }
@@ -358,7 +326,7 @@ void DTLSContext::SetVerifyMode(const FunctionCallbackInfo<Value>& args) {
 void DTLSContext::LoadDefaultCAs(const FunctionCallbackInfo<Value>& args) {
   DTLSContext* ctx;
   ASSIGN_OR_RETURN_UNWRAP(&ctx, args.This());
-  SSL_CTX_set_default_verify_paths(ctx->ctx_.get());
+  crypto::UseDefaultRootCertStore(ctx->env(), ctx->ctx_.get());
 }
 
 void DTLSContext::SetECDHCurve(const FunctionCallbackInfo<Value>& args) {

@@ -63,21 +63,39 @@ Supported type names:
 
 * `void`
 * `char`
-* `i8`, `int8`
-* `u8`, `uint8`, `bool`
-* `i16`, `int16`
-* `u16`, `uint16`
-* `i32`, `int32`
-* `u32`, `uint32`
-* `i64`, `int64`
-* `u64`, `uint64`
-* `f32`, `float`, `float32`
-* `f64`, `double`, `float64`
-* `pointer`, `ptr`
-* `string`, `str`
+* `int8`
+* `uint8`
+* `int16`
+* `uint16`
+* `int32`
+* `uint32`
+* `int64`
+* `uint64`
+* `float32`
+* `float64`
+* `pointer`
+* `string`
 * `buffer`
 * `arraybuffer`
 * `function`
+
+<details>
+<summary>Alternative spellings</summary>
+
+* `i8` for `int8`
+* `u8` and `bool` for `uint8`
+* `i16` for `int16`
+* `u16` for `uint16`
+* `i32` for `int32`
+* `u32` for `uint32`
+* `i64` for `int64`
+* `u64` for `uint64`
+* `f32` and `float` for `float32`
+* `f64` and `double` for `float64`
+* `ptr` for `pointer`
+* `str` for `string`
+
+</details>
 
 These type names are also exposed as constants on `ffi.types`:
 
@@ -116,23 +134,36 @@ through reentrant JavaScript such as FFI callbacks. Doing so may crash the
 process, produce incorrect output, or corrupt memory.
 
 The `char` type follows the platform C ABI. On platforms where plain C `char`
-is signed it behaves like `i8`; otherwise it behaves like `u8`.
+is signed it behaves like `int8`; otherwise it behaves like `uint8`.
 
 The `bool` type is marshaled as an 8-bit unsigned integer. Pass numeric values
 such as `0` and `1`; JavaScript `true` and `false` are not accepted.
 
-On optimized Fast FFI calls, `pointer`, `ptr`, and `function` parameters accept
-raw pointer `bigint` values. For pointer-like parameters, `null`, `undefined`,
-strings, `Buffer`, typed array, `DataView`, and `ArrayBuffer` values are
-converted on the JavaScript side before calling the optimized native wrapper.
+On optimized Fast FFI calls, `pointer` and `function` parameters accept raw
+pointer `bigint` values. For pointer-like parameters, `null`, `undefined`,
+strings, `Buffer`, typed array, `DataView`, and `ArrayBuffer` values are converted
+on the JavaScript side before calling the optimized native wrapper.
 
-Optimized Fast FFI calls support at most 8 function arguments, but the exact
-limit depends on the architecture and on the argument types, because each
-argument must fit in the registers used by the platform trampoline. Integer
-and pointer arguments are limited to 7 on AArch64 and to 6 on x86-64, while
-floating-point arguments can use up to 8 on both. Functions that exceed these
-limits, including any function with more than 8 arguments, use the generic FFI
-call path instead.
+Optimized Fast FFI calls fall back to the generic FFI call path when a
+function's arguments or return type do not fit the platform-specific fast
+trampoline. Fast FFI calls support at most 8 total arguments, and the
+register and argument limits differ per architecture:
+
+| Architecture               | Max integer/pointer args                  | Max floating-point args | Buffer-shaped args | Buffer-shaped + FP together | Narrow (8/16-bit) return |
+| -------------------------- | ----------------------------------------- | ----------------------- | ------------------ | --------------------------- | ------------------------ |
+| AArch64                    | 7 (6 when a buffer-shaped arg is present) | 8                       | Supported          | Not supported               | Supported                |
+| x86-64, Linux/macOS (SysV) | 6 (4 when a buffer-shaped arg is present) | 8                       | Supported          | Not supported               | Supported                |
+| x86-64, Windows (Win64)    | 3 (total arguments also capped at 3)      | 3                       | Not supported      | N/A                         | Supported                |
+| s390x                      | 4                                         | 4                       | Not supported      | N/A                         | Not supported            |
+| PPC64LE                    | 7                                         | 8                       | Not supported      | N/A                         | Not supported            |
+| LoongArch64                | 7                                         | 8                       | Not supported      | N/A                         | Not supported            |
+| RISC-V (64-bit)            | 7                                         | 8                       | Not supported      | N/A                         | Not supported            |
+
+PPC64BE has no fast-call trampoline and always uses the generic call path.
+"Buffer-shaped args" means `Buffer`, typed array, `DataView`, or `ArrayBuffer`
+values passed as pointer-like arguments. Functions whose argument or return
+types exceed the limits for the current platform use the generic FFI call
+path instead.
 
 ## Signature objects
 
@@ -148,8 +179,8 @@ optional:
 
 ```js
 const signature = {
-  return: 'i32',
-  arguments: ['i32', 'i32'],
+  return: 'int32',
+  arguments: ['int32', 'int32'],
 };
 ```
 
@@ -207,7 +238,7 @@ import { dlopen, suffix } from 'node:ffi';
 
 {
   using handle = dlopen(`./mylib.${suffix}`, {
-    add_i32: { arguments: ['i32', 'i32'], return: 'i32' },
+    add_i32: { arguments: ['int32', 'int32'], return: 'int32' },
   });
   console.log(handle.functions.add_i32(20, 22));
 } // handle.lib.close() is invoked automatically here.
@@ -217,8 +248,8 @@ import { dlopen, suffix } from 'node:ffi';
 import { dlopen, suffix } from 'node:ffi';
 
 const { lib, functions } = dlopen(`./mylib.${suffix}`, {
-  add_i32: { arguments: ['i32', 'i32'], return: 'i32' },
-  string_length: { arguments: ['pointer'], return: 'u64' },
+  add_i32: { arguments: ['int32', 'int32'], return: 'int32' },
+  string_length: { arguments: ['pointer'], return: 'uint64' },
 });
 
 console.log(functions.add_i32(20, 22));
@@ -228,8 +259,8 @@ console.log(functions.add_i32(20, 22));
 const { dlopen, suffix } = require('node:ffi');
 
 const { lib, functions } = dlopen(`./mylib.${suffix}`, {
-  add_i32: { arguments: ['i32', 'i32'], return: 'i32' },
-  string_length: { arguments: ['pointer'], return: 'u64' },
+  add_i32: { arguments: ['int32', 'int32'], return: 'int32' },
+  string_length: { arguments: ['pointer'], return: 'uint64' },
 });
 
 console.log(functions.add_i32(20, 22));
@@ -363,15 +394,16 @@ The returned function has a `.pointer` property containing the native function
 address as a `bigint`.
 
 If the same symbol has already been resolved, requesting it again with a
-different signature throws.
+different signature throws. Requesting it again with the same signature returns
+the same function, as does reading it from [`library.functions`][].
 
 ```cjs
 const { DynamicLibrary, suffix } = require('node:ffi');
 
 const lib = new DynamicLibrary(`./mylib.${suffix}`);
 const add = lib.getFunction('add_i32', {
-  arguments: ['i32', 'i32'],
-  return: 'i32',
+  arguments: ['int32', 'int32'],
+  return: 'int32',
 });
 
 console.log(add(20, 22));
@@ -421,7 +453,7 @@ const { DynamicLibrary, suffix } = require('node:ffi');
 const lib = new DynamicLibrary(`./mylib.${suffix}`);
 
 const callback = lib.registerCallback(
-  { arguments: ['i32'], return: 'i32' },
+  { arguments: ['int32'], return: 'int32' },
   (value) => value * 2,
 );
 ```
@@ -460,6 +492,10 @@ memory.
 
 Keeps the callback strongly referenced by JavaScript.
 
+Throws `ERR_INVALID_ARG_VALUE` if the callback function has already been
+garbage collected after a previous `library.unrefCallback(pointer)` call, since
+a collected function cannot be referenced again.
+
 ### `library.unrefCallback(pointer)`
 
 * `pointer` {bigint}
@@ -470,6 +506,9 @@ If the callback function is later garbage collected, subsequent native
 invocations become a no-op. Non-void return values are zero-initialized before
 returning to native code.
 
+Throws `ERR_INVALID_ARG_VALUE` if the callback function has already been
+garbage collected.
+
 ## Calling native functions
 
 Argument conversion depends on the declared FFI type.
@@ -477,7 +516,8 @@ Argument conversion depends on the declared FFI type.
 For 8-, 16-, and 32-bit integer types and for floating-point types, pass
 JavaScript `number` values that match the declared type.
 
-For 64-bit integer types (`i64` and `u64`), pass JavaScript `bigint` values.
+For 64-bit integer types (`int64` and `uint64`), pass JavaScript `bigint`
+values.
 
 For pointer-like arguments:
 
@@ -707,7 +747,7 @@ available storage. This function does not allocate memory on its own.
 added: v26.1.0
 -->
 
-* `source` {Buffer|ArrayBuffer|ArrayBufferView}
+* `source` {Buffer|ArrayBuffer|SharedArrayBuffer|ArrayBufferView}
 * Returns: {bigint}
 
 Returns the raw memory address of JavaScript-managed byte storage.
@@ -719,7 +759,7 @@ Using stale pointers can cause memory corruption or process crashes.
 ## `ffi.getCurrentEventLoop()`
 
 <!-- YAML
-added: REPLACEME
+added: v26.6.0
 -->
 
 * Returns: {bigint}
@@ -759,5 +799,6 @@ and keep callback and pointer lifetimes explicit on the native side.
 [Permission Model]: permissions.md#permission-model
 [`--allow-ffi`]: cli.md#--allow-ffi
 [`ffi.toBuffer(pointer, length, copy)`]: #ffitobufferpointer-length-copy
+[`library.functions`]: #libraryfunctions
 [`using`]: https://tc39.es/proposal-explicit-resource-management/#sec-using-declarations
 [type names]: #type-names

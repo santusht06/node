@@ -482,15 +482,17 @@ tests must satisfy **both** requirements in order to be executed.
 ## Test tags
 
 <!-- YAML
-added: v26.2.0
+added:
+ - v26.2.0
+ - v24.19.0
 -->
 
 > Stability: 1.0 - Early development
 
 Tags annotate tests and suites with arbitrary string labels. The
 [`--experimental-test-tag-filter`][] CLI flag (or the `testTagFilters`
-option on [`run()`][]) selects tests whose tag set contains every
-provided filter value.
+option on [`run()`][]) selects tests by a boolean expression over those
+labels.
 
 Tags are an alternative to encoding metadata into test names. They are
 useful for cross-cutting axes such as subsystem, speed bucket, flakiness,
@@ -523,37 +525,89 @@ describe('database', { tags: ['db'] }, () => {
 });
 ```
 
-Tag values must be non-empty strings. Tags are matched case-insensitively;
-the canonical form is lowercase. Duplicates within a single `tags` array
-are collapsed on the lowercased form, preserving the first-seen
-declaration order.
+Tag values must be non-empty strings that contain no whitespace, no
+operator characters (`& | ! ( ) *`), and are not the reserved words
+`'and'`, `'or'`, or `'not'` in any casing. Tags are matched
+case-insensitively; the canonical form is lowercase. Duplicates within a
+single `tags` array are collapsed on the lowercased form, preserving the
+first-seen declaration order.
 
 Hooks (`before`, `after`, `beforeEach`, `afterEach`) do not declare their
 own tags. They run as part of their owning suite, which carries the
 suite's tags.
 
-### Filtering by tag
+### Filtering syntax
 
-Each [`--experimental-test-tag-filter`][] value is a literal tag name. A
-test runs only when its tag set contains that name. The flag may be
-specified more than once; tests must match **every** filter to run. The
-same applies to the `testTagFilters` array on [`run()`][]. Filters are
-case-insensitive and AND'd with [`--test-name-pattern`][],
-[`--test-skip-pattern`][], and `.only` filtering.
+The filter expression supports:
 
-Untagged tests are excluded under any non-empty filter, since the filter
-requires the tag to be present.
+* Identifiers—any non-whitespace, non-operator characters. A literal
+  identifier matches a tag of the same value (case-insensitive).
+* `*` wildcards inside an identifier match any sequence of characters.
+  A bare `*` matches any tagged test.
+* Boolean operators with two equivalent forms:
+  * `and` / `&&`
+  * `or` / `||`
+  * `not` / `!`
+* Parentheses for grouping.
 
-### Reading tags from inside a test
+The word forms (`and`, `or`, `not`) require whitespace separation; the
+punctuation forms do not.
+
+#### Operator precedence
+
+The expression is evaluated with the standard precedence
+`not > and > or`. Binary operators are left-associative.
+
+| Expression     | Equivalent grouping |
+| -------------- | ------------------- |
+| `a or b and c` | `a or (b and c)`    |
+| `not a and b`  | `(not a) and b`     |
+
+Use parentheses to override:
+
+| Expression                     | Selects                                    |
+| ------------------------------ | ------------------------------------------ |
+| `(unit or smoke) and not slow` | unit-or-smoke tests that are not also slow |
+| `db && !flaky`                 | db tests that are not flaky                |
+| `*`                            | every tagged test                          |
+
+#### Untagged tests
+
+Untagged tests behave as if they have an empty tag set. As a result:
+
+| Filter expression        | Untagged test | Why                                              |
+| ------------------------ | ------------- | ------------------------------------------------ |
+| `db`                     | excluded      | Positive match against an empty tag set is false |
+| `*`                      | excluded      | The bare wildcard requires at least one tag      |
+| `db or unit`             | excluded      | Both branches are false against an empty tag set |
+| `not flaky`              | included      | Negation against an empty tag set is true        |
+| `not flaky and not slow` | included      | Both negations are true against an empty tag set |
+| `db or not flaky`        | included      | The negated branch is true                       |
+
+For example, `--experimental-test-tag-filter='not flaky'` runs every test
+that is not tagged `flaky`, including all untagged tests.
+
+#### Composing multiple filters
+
+[`--experimental-test-tag-filter`][] may be specified more than once on the
+command line. Multiple expressions compose by AND—a test must satisfy
+every expression to run. The same applies to passing an array to
+`testTagFilters` on [`run()`][]. The tag filter is also AND'd with
+[`--test-name-pattern`][], [`--test-skip-pattern`][], and `.only`
+filtering.
+
+#### Reading tags from inside a test
 
 The [`TestContext`][] object exposes the test's tags as a frozen array
 through [`context.tags`][], so tests can branch on their own metadata.
 
-### Errors
+#### Errors
 
 A tag value that violates the validation rules above throws
 `ERR_INVALID_ARG_VALUE` at the registration site, before any test runs.
-A non-array `tags` value throws `ERR_INVALID_ARG_TYPE`.
+A non-array `tags` value throws `ERR_INVALID_ARG_TYPE`. A malformed
+filter expression on the CLI causes the test runner to exit with a
+non-zero status before running any test files.
 
 ## Extraneous asynchronous activity
 
@@ -828,7 +882,7 @@ test runner functionality:
 
 * `--test` - Prevented to avoid recursive test execution
 * `--experimental-test-coverage` - Managed by the test runner
-* `--experimental-test-tag-filter` - Filter values are validated by the parent
+* `--experimental-test-tag-filter` - Filter expressions are validated by the parent
   process and re-emitted to child processes
 * `--watch` - Watch mode is handled at the parent level
 * `--experimental-default-config-file` - Config file loading is handled by the parent
@@ -1651,7 +1705,9 @@ added:
   - v18.9.0
   - v16.19.0
 changes:
-  - version: v26.2.0
+  - version:
+     - v26.2.0
+     - v24.19.0
     pr-url: https://github.com/nodejs/node/pull/63221
     description: Added the `testTagFilters` option.
   - version:
@@ -1742,10 +1798,11 @@ changes:
     For each test that is executed, any corresponding test hooks, such as
     `beforeEach()`, are also run.
     **Default:** `undefined`.
-  * `testTagFilters` {string|string\[]} A tag name, or an array of tag names,
-    used to filter tests by their declared tags. Tests must contain every
-    listed tag to run. Equivalent to passing [`--experimental-test-tag-filter`][]
-    on the command line. See [Test tags][]. **Default:** `undefined`.
+  * `testTagFilters` {string|string\[]} A boolean expression, or an array of
+    boolean expressions, used to filter tests by their declared tags.
+    Multiple expressions compose by AND. Equivalent to passing
+    [`--experimental-test-tag-filter`][] on the command line. See
+    [Test tags][]. **Default:** `undefined`.
   * `timeout` {number} A number of milliseconds the test execution will
     fail after.
     If unspecified, subtests inherit this value from their parent.
@@ -1896,7 +1953,9 @@ added:
   - v18.0.0
   - v16.17.0
 changes:
-  - version: v26.2.0
+  - version:
+     - v26.2.0
+     - v24.19.0
     pr-url: https://github.com/nodejs/node/pull/63221
     description: Added the `tags` option.
   - version:
@@ -1956,6 +2015,10 @@ changes:
     If the number of assertions run in the test does not match the number
     specified in the plan, the test will fail.
     **Default:** `undefined`.
+  * `fn` {Function|AsyncFunction} The function under test. If provided, it will take
+    precedence over the `fn` parameter.
+  * `name` {string} The name of the test. If provided, it will take precedence over the
+    `name` parameter.
 * `fn` {Function|AsyncFunction} The function under test. The first argument
   to this function is a [`TestContext`][] object. If the test uses callbacks,
   the callback function is passed as the second argument. **Default:** A no-op
@@ -3446,11 +3509,13 @@ added:
   - v18.9.0
   - v16.19.0
 changes:
-  - version: REPLACEME
+  - version: v26.6.0
     pr-url: https://github.com/nodejs/node/pull/64309
     description: Added `entryFile` to events forwarded from child processes
                  when tests run with process isolation.
-  - version: v26.3.0
+  - version:
+     - v26.3.0
+     - v24.19.0
     pr-url: https://github.com/nodejs/node/pull/63435
     description: Added `parentId` to test events that carry a `testId`.
   - version:
@@ -3760,7 +3825,7 @@ since the parent runner only knows about file-level tests. When using
 ### Event: `'test:log'`
 
 <!-- YAML
-added: REPLACEME
+added: v26.6.0
 -->
 
 * `data` {Object}
@@ -3944,7 +4009,9 @@ Emitted when one or more tests are restarted due to a file change in watch mode.
 ## `getTestContext()`
 
 <!-- YAML
-added: v26.1.0
+added:
+ - v26.1.0
+ - v24.19.0
 -->
 
 * Returns: {TestContext|SuiteContext|undefined}
@@ -4103,8 +4170,8 @@ added:
     If unspecified, subtests inherit this value from their parent.
     **Default:** `Infinity`.
 
-This function is used to create a hook running before
-subtest of the current test.
+This function registers a hook that runs before any subtests of the current
+test.
 
 ### `context.beforeEach([fn][, options])`
 
@@ -4125,8 +4192,8 @@ added:
     If unspecified, subtests inherit this value from their parent.
     **Default:** `Infinity`.
 
-This function is used to create a hook running
-before each subtest of the current test.
+This function registers a hook that runs before each subtest of the current
+test.
 
 ```js
 test('top level test', async (t) => {
@@ -4159,8 +4226,7 @@ added:
     If unspecified, subtests inherit this value from their parent.
     **Default:** `Infinity`.
 
-This function is used to create a hook that runs after the current test
-finishes.
+This function registers a hook that runs after the current test finishes.
 
 ```js
 test('top level test', async (t) => {
@@ -4188,8 +4254,8 @@ added:
     If unspecified, subtests inherit this value from their parent.
     **Default:** `Infinity`.
 
-This function is used to create a hook running
-after each subtest of the current test.
+This function registers a hook that runs after each subtest of the current
+test.
 
 ```js
 test('top level test', async (t) => {
@@ -4317,7 +4383,7 @@ test('top level test', (t) => {
 ### `context.log(message[, data])`
 
 <!-- YAML
-added: REPLACEME
+added: v26.6.0
 -->
 
 * `message` {string} Message to be reported.
@@ -4408,7 +4474,9 @@ the second attempt is `1`, and so on. This property is useful in conjunction wit
 ### `context.tags`
 
 <!-- YAML
-added: v26.2.0
+added:
+ - v26.2.0
+ - v24.19.0
 -->
 
 > Stability: 1.0 - Early development
@@ -4636,7 +4704,9 @@ added:
   - v18.0.0
   - v16.17.0
 changes:
-  - version: v26.2.0
+  - version:
+     - v26.2.0
+     - v24.19.0
     pr-url: https://github.com/nodejs/node/pull/63221
     description: Added the `tags` option.
   - version:
@@ -4829,7 +4899,7 @@ test.describe('my suite', (suite) => {
 ### `context.log(message[, data])`
 
 <!-- YAML
-added: REPLACEME
+added: v26.6.0
 -->
 
 * `message` {string} Message to be reported.
