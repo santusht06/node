@@ -27,8 +27,6 @@ using ncrypto::X509View;
 using v8::Array;
 using v8::ArrayBuffer;
 using v8::ArrayBufferView;
-using v8::BackingStoreInitializationMode;
-using v8::BackingStoreOnFailureMode;
 using v8::Boolean;
 using v8::Context;
 using v8::Date;
@@ -140,29 +138,18 @@ MaybeLocal<Value> ToBuffer(Environment* env, BIOPointer* bio) {
   BUF_MEM* mem = *bio;
   if (!mem) [[unlikely]]
     return {};
-#ifdef V8_ENABLE_SANDBOX
-  // If the v8 sandbox is enabled, then all array buffers must be allocated
-  // via the isolate. External buffers are not allowed. So, instead of wrapping
-  // the BIOPointer we'll copy it instead.
-  auto backing = ArrayBuffer::NewBackingStore(
+  auto backing = AdoptIntoBackingStore(
       env->isolate(),
-      mem->length,
-      BackingStoreInitializationMode::kUninitialized,
-      BackingStoreOnFailureMode::kReturnNull);
-  if (!backing) {
-    THROW_ERR_MEMORY_ALLOCATION_FAILED(env);
-    return MaybeLocal<Value>();
-  }
-  memcpy(backing->Data(), mem->data, mem->length);
-#else
-  auto backing = ArrayBuffer::NewBackingStore(
       mem->data,
       mem->length,
       [](void*, size_t, void* data) {
         BIOPointer free_me(static_cast<BIO*>(data));
       },
       bio->release());
-#endif  // V8_ENABLE_SANDBOX
+  if (!backing) {
+    THROW_ERR_MEMORY_ALLOCATION_FAILED(env);
+    return MaybeLocal<Value>();
+  }
   auto ab = ArrayBuffer::New(env->isolate(), std::move(backing));
   Local<Value> ret;
   if (!Buffer::New(env, ab, 0, ab->ByteLength()).ToLocal(&ret)) return {};
@@ -920,14 +907,22 @@ void X509Certificate::IsX509Certificate(
 
 MaybeLocal<Object> X509Certificate::New(Environment* env,
                                         X509Pointer cert,
-                                        STACK_OF(X509) * issuer_chain) {
+                                        const STACK_OF(X509) * issuer_chain) {
   std::shared_ptr<ManagedX509> mcert(new ManagedX509(std::move(cert)));
   return New(env, std::move(mcert), issuer_chain);
 }
 
 MaybeLocal<Object> X509Certificate::New(Environment* env,
                                         std::shared_ptr<ManagedX509> cert,
-                                        STACK_OF(X509) * issuer_chain) {
+                                        const STACK_OF(X509) * issuer_chain) {
+  return NewWithIssuers(env, std::move(cert), issuer_chain, 0);
+}
+
+MaybeLocal<Object> X509Certificate::NewWithIssuers(
+    Environment* env,
+    std::shared_ptr<ManagedX509> cert,
+    const STACK_OF(X509) * issuer_chain,
+    int start) {
   EscapableHandleScope scope(env->isolate());
   Local<Object> obj;
   if (!GetConstructorTemplate(env)
@@ -937,20 +932,23 @@ MaybeLocal<Object> X509Certificate::New(Environment* env,
     return MaybeLocal<Object>();
   }
 
-  Local<Object> issuer_chain_obj;
-  if (issuer_chain != nullptr && sk_X509_num(issuer_chain)) {
-    X509Pointer cert(X509_dup(sk_X509_value(issuer_chain, 0)));
-    sk_X509_delete(issuer_chain, 0);
-    auto maybeObj =
-        sk_X509_num(issuer_chain)
-            ? X509Certificate::New(env, std::move(cert), issuer_chain)
-            : X509Certificate::New(env, std::move(cert));
-    if (!maybeObj.ToLocal(&issuer_chain_obj)) [[unlikely]] {
+  Local<Object> issuer;
+  if (issuer_chain != nullptr && start < sk_X509_num(issuer_chain)) {
+    X509Pointer issuer_cert =
+        X509View(sk_X509_value(issuer_chain, start)).clone();
+    if (!issuer_cert) [[unlikely]] {
+      return MaybeLocal<Object>();
+    }
+    if (!NewWithIssuers(env,
+                        std::make_shared<ManagedX509>(std::move(issuer_cert)),
+                        issuer_chain,
+                        start + 1)
+             .ToLocal(&issuer)) [[unlikely]] {
       return MaybeLocal<Object>();
     }
   }
 
-  new X509Certificate(env, obj, std::move(cert), issuer_chain_obj);
+  new X509Certificate(env, obj, std::move(cert), issuer);
   return scope.Escape(obj);
 }
 
@@ -967,23 +965,29 @@ MaybeLocal<Object> X509Certificate::GetPeerCert(Environment* env,
                                                 GetPeerCertificateFlag flag) {
   ClearErrorOnReturn clear_error_on_return;
 
+  // The peer chain is owned by the SSL session and must not be modified. Its
+  // first entry is the peer certificate on the client but not on the server.
+  const STACK_OF(X509)* ssl_certs = SSL_get_peer_cert_chain(ssl.get());
+  int issuers_start = 0;
+
   X509Pointer cert;
   if ((flag & GetPeerCertificateFlag::SERVER) ==
       GetPeerCertificateFlag::SERVER) {
     cert = X509Pointer::PeerFrom(ssl);
   }
-
-  STACK_OF(X509)* ssl_certs = SSL_get_peer_cert_chain(ssl.get());
-  if (!cert && (ssl_certs == nullptr || sk_X509_num(ssl_certs) == 0))
-    return MaybeLocal<Object>();
-
-  if (!cert) [[unlikely]] {
-    cert.reset(sk_X509_value(ssl_certs, 0));
-    sk_X509_delete(ssl_certs, 0);
+  if (!cert) {
+    if (ssl_certs == nullptr || sk_X509_num(ssl_certs) == 0)
+      return MaybeLocal<Object>();
+    cert = X509View(sk_X509_value(ssl_certs, 0)).clone();
+    if (!cert) [[unlikely]]
+      return MaybeLocal<Object>();
+    issuers_start = 1;
   }
 
-  return sk_X509_num(ssl_certs) ? New(env, std::move(cert), ssl_certs)
-                                : New(env, std::move(cert));
+  return NewWithIssuers(env,
+                        std::make_shared<ManagedX509>(std::move(cert)),
+                        ssl_certs,
+                        issuers_start);
 }
 
 v8::MaybeLocal<v8::Value> X509Certificate::toObject(Environment* env) {

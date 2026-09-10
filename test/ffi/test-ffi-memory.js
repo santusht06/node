@@ -76,7 +76,9 @@ test('ffi supports unaligned memory access', () => {
   }));
 });
 
-test('ffi toBuffer supports copy and zero-copy views', () => {
+const zeroCopy = { skip: common.hasV8Sandbox && 'zero-copy views are unavailable with the V8 sandbox' };
+
+test('ffi toBuffer supports copy and zero-copy views', zeroCopy, () => {
   withAllocations(common.mustCall((alloc) => {
     const ptr = alloc(8);
     ffi.exportBuffer(Buffer.from([1, 2, 3, 4]), ptr, 4);
@@ -98,7 +100,7 @@ test('ffi toBuffer supports copy and zero-copy views', () => {
   }));
 });
 
-test('ffi toArrayBuffer supports copy and zero-copy views', () => {
+test('ffi toArrayBuffer supports copy and zero-copy views', zeroCopy, () => {
   withAllocations(common.mustCall((alloc) => {
     const ptr = alloc(4);
     ffi.exportBuffer(Buffer.from([10, 20, 30, 40]), ptr, 4);
@@ -117,6 +119,16 @@ test('ffi toArrayBuffer supports copy and zero-copy views', () => {
     copiedFromUndefined[1] = 55;
     assert.deepStrictEqual([...copiedFromUndefined], [10, 55, 99, 40]);
     assert.deepStrictEqual([...ffi.toBuffer(ptr, 4)], [10, 20, 99, 40]);
+  }));
+});
+
+test('ffi zero-copy views throw with the V8 sandbox', { skip: !common.hasV8Sandbox }, () => {
+  withAllocations(common.mustCall((alloc) => {
+    const ptr = alloc(4);
+    ffi.exportBuffer(Buffer.from([1, 2, 3, 4]), ptr, 4);
+    assert.deepStrictEqual([...ffi.toBuffer(ptr, 4)], [1, 2, 3, 4]);
+    assert.throws(() => ffi.toBuffer(ptr, 4, false), { code: 'ERR_OPERATION_FAILED' });
+    assert.throws(() => ffi.toArrayBuffer(ptr, 4, false), { code: 'ERR_OPERATION_FAILED' });
   }));
 });
 
@@ -317,4 +329,24 @@ test('ffi validates memory access arguments', () => {
       assert.throws(() => ffi.toBuffer(2n ** 32n, 0), /platform pointer range/);
     }
   }));
+});
+
+test('ffi memory helpers reject missing required arguments', () => {
+  const widths = ['Int8', 'Uint8', 'Int16', 'Uint16', 'Int32', 'Uint32',
+                  'Int64', 'Uint64', 'Float32', 'Float64'];
+
+  // Calling a helper with no arguments must report the missing pointer the
+  // same way an explicitly passed `undefined` does, instead of returning
+  // `undefined` as if the read or the write had succeeded.
+  for (const width of widths) {
+    for (const name of [`get${width}`, `set${width}`]) {
+      assert.throws(() => ffi[name](), { code: 'ERR_INVALID_ARG_VALUE' });
+      assert.throws(() => ffi[name](undefined), { code: 'ERR_INVALID_ARG_VALUE' });
+    }
+  }
+
+  assert.throws(() => ffi.toBuffer(1n), { code: 'ERR_INVALID_ARG_VALUE' });
+  assert.throws(() => ffi.toBuffer(1n, undefined), { code: 'ERR_INVALID_ARG_VALUE' });
+  assert.throws(() => ffi.toArrayBuffer(1n), { code: 'ERR_INVALID_ARG_VALUE' });
+  assert.throws(() => ffi.toArrayBuffer(1n, undefined), { code: 'ERR_INVALID_ARG_VALUE' });
 });

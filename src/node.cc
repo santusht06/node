@@ -49,6 +49,9 @@
 
 #if HAVE_OPENSSL
 #include "ncrypto.h"
+#if OPENSSL_VERSION_MAJOR >= 3
+#include <openssl/provider.h>
+#endif
 #include "node_crypto.h"
 #if OPENSSL_VERSION_MAJOR >= 3 && !defined(CONF_MFLAGS_IGNORE_MISSING_FILE)
 // OpenSSL hides this deprecated macro under OPENSSL_NO_DEPRECATED, but the
@@ -382,6 +385,10 @@ MaybeLocal<Value> StartExecution(Environment* env,
 
   if (env->options()->syntax_check_only) {
     return StartExecution(env, "internal/main/check_syntax");
+  }
+
+  if (env->options()->bench_runner) {
+    return StartExecution(env, "internal/main/bench_runner");
   }
 
   if (env->options()->test_runner) {
@@ -775,6 +782,20 @@ static ExitCode ProcessGlobalArgsInternal(std::vector<std::string>* args,
   if (std::ranges::find(v8_args, "--no-js-source-phase-imports") ==
       v8_args.end()) {
     v8_args.emplace_back("--js-source-phase-imports");
+  }
+
+  // V8 aborts the process when external memory grows by more than
+  // --external-memory-max-reasonable-size gigabytes in a single step. That
+  // limit is a Chromium-oriented sanity check; allocating a buffer larger
+  // than it is a legitimate thing to do in Node, and should raise a
+  // RangeError rather than crash. Disable the check unless the user asked
+  // for a specific limit.
+  // Refs: https://github.com/nodejs/node/issues/65534
+  if (std::ranges::none_of(v8_args, [](const std::string& arg) {
+        return arg.starts_with("--external-memory-max-reasonable-size") ||
+               arg.starts_with("--external_memory_max_reasonable_size");
+      })) {
+    v8_args.emplace_back("--external-memory-max-reasonable-size=0");
   }
 
 #ifdef __POSIX__
@@ -1239,16 +1260,38 @@ InitializeOncePerProcessInternal(const std::vector<std::string>& args,
       result->errors_.emplace_back(std::move(*fips_error));
       return result;
     }
+    crypto::InstallFipsIndicatorCallback();
 
-    // Ensure CSPRNG is properly seeded.
-    CHECK(ncrypto::CSPRNG(nullptr, 0));
+    // Activating the default provider here keeps --openssl-legacy-provider
+    // working. Its explicit load disables OpenSSL's fallback, and the eager
+    // CSPRNG check used to activate the provider as a side effect. Only
+    // check the seeding when that provider is missing or FIPS is on, so a
+    // configuration without a DRBG still aborts at startup instead of
+    // hanging at the first crypto call. Otherwise the DRBG is instantiated
+    // on first use.
+#if OPENSSL_VERSION_MAJOR >= 3
+    const bool check_csprng = ncrypto::isFipsEnabled() ||
+                              !OSSL_PROVIDER_available(nullptr, "default");
+#else
+    const bool check_csprng = true;
+#endif
+    if (check_csprng) {
+      CHECK(ncrypto::CSPRNG(nullptr, 0));
+    }
 
+    // V8 uses the entropy for hash seeds, ASLR and Math.random(), none of
+    // it cryptographic. Going through OpenSSL would instantiate the DRBG
+    // and build the default provider's algorithm tables on every startup.
+    // V8 falls back to very weak entropy when the source fails, so abort
+    // instead.
     V8::SetEntropySource([](unsigned char* buffer, size_t length) {
-      // V8 falls back to very weak entropy when this function fails
-      // and /dev/urandom isn't available. That wouldn't be so bad if
-      // the entropy was only used for Math.random() but it's also used for
-      // hash table and address space layout randomization. Better to abort.
+#ifdef _AIX
+      // uv_random() reads /dev/random on AIX, which blocks. OpenSSL seeds
+      // from /dev/urandom there.
       CHECK(ncrypto::CSPRNG(buffer, length));
+#else
+      CHECK_EQ(uv_random(nullptr, nullptr, buffer, length, 0, nullptr), 0);
+#endif
       return true;
     });
 #endif  // !defined(OPENSSL_IS_BORINGSSL)
@@ -1273,6 +1316,10 @@ InitializeOncePerProcessInternal(const std::vector<std::string>& args,
       allocator = result->platform_->GetPageAllocator();
     }
     cppgc::InitializeProcess(allocator);
+  }
+
+  if (flags & ProcessInitializationFlags::kNoHarvestBuiltinCodeCache) {
+    builtins::BuiltinLoader::SetHarvestCodeCache(false);
   }
 
   if (!(flags & ProcessInitializationFlags::kNoInitializeV8)) {

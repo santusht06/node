@@ -2,9 +2,6 @@
 
 #if defined(NODE_WANT_INTERNALS) && NODE_WANT_INTERNALS
 
-#include <optional>
-#include <variant>
-
 #include "base_object.h"
 #include "bindingdata.h"
 #include "defs.h"
@@ -14,20 +11,16 @@
 
 namespace node::quic {
 
-// Parsed session ticket application data, produced by
-// Application::ParseTicketData() before ALPN negotiation and consumed
-// by Application::ApplySessionTicketData() after.
-struct DefaultTicketData {};
-struct Http3TicketData {
-  uint64_t max_field_section_size;
-  uint64_t qpack_max_dtable_capacity;
-  uint64_t qpack_encoder_max_dtable_capacity;
-  uint64_t qpack_blocked_streams;
-  bool enable_connect_protocol;
-  bool enable_datagrams;
+enum class HeadersKind : uint8_t {
+  HINTS,
+  INITIAL,
+  TRAILING,
 };
-using PendingTicketAppData =
-    std::variant<std::monostate, DefaultTicketData, Http3TicketData>;
+
+enum class HeadersFlags : uint8_t {
+  NONE,
+  TERMINAL,
+};
 
 // An Application implements the ALPN-protocol specific semantics on behalf
 // of a QUIC Session.
@@ -113,13 +106,10 @@ class Session::Application : public MemoryRetainer {
   // Application.
   virtual bool AcknowledgeStreamData(stream_id id, size_t datalen);
 
-  // Called to determine if a Header can be added to this application.
-  // Applications that do not support headers will always return false.
-  virtual bool CanAddHeader(size_t current_count,
-                            size_t current_headers_length,
-                            size_t this_header_length) {
-    return false;
-  }
+  // Called when a pending transport stream receives its stream ID. Protocols
+  // can use this to flush operations that require an opened stream. Returns
+  // false if deferred application data could not be submitted.
+  virtual bool StreamOpened(Stream& stream) { return true; }
 
   // Called when ngtcp2 reports NGTCP2_ERR_STREAM_SHUT_WR for a stream.
   // Applications that manage their own framing (e.g., HTTP/3) must inform
@@ -166,31 +156,14 @@ class Session::Application : public MemoryRetainer {
   virtual void CollectSessionTicketAppData(
       SessionTicket::AppData* app_data) const;
 
-  // Different Applications may set some application data in the session
-  // ticket (e.g. http/3 would set server settings in the application data).
-  // By default, there's nothing to get.
+  // Validates the application data embedded in a session ticket offered by
+  // a resuming client, and decides whether the ticket may be used. The
+  // Application is always installed by the time a ticket can be decrypted,
+  // so each Application checks its own data here. By default, there's
+  // nothing to get.
   virtual SessionTicket::AppData::Status ExtractSessionTicketAppData(
       const SessionTicket::AppData& app_data,
       SessionTicket::AppData::Source::Flag flag);
-
-  // Validates parsed ticket data against current application options.
-  // Returns false if the stored settings are more permissive than the
-  // current config (e.g., a feature was enabled when the ticket was
-  // issued but is now disabled).
-  static bool ValidateTicketData(const PendingTicketAppData& data,
-                                 const Application_Options& options);
-
-  // Parse session ticket app data before ALPN negotiation. Reads the
-  // type byte and dispatches to the appropriate application-specific
-  // parser. Returns std::nullopt if parsing fails.
-  static std::optional<PendingTicketAppData> ParseTicketData(
-      const uv_buf_t& data);
-
-  // Called after ALPN negotiation to validate and apply previously
-  // parsed session ticket app data. Returns false if the data is
-  // incompatible (e.g., type mismatch or settings downgrade), which
-  // causes the handshake to fail.
-  virtual bool ApplySessionTicketData(const PendingTicketAppData& data) = 0;
 
   // Notifies the Application that the identified stream has been closed.
   virtual void ReceiveStreamClose(Stream* stream,
@@ -208,12 +181,18 @@ class Session::Application : public MemoryRetainer {
   // Submits an outbound block of headers for the given stream. Not all
   // Application types will support headers, in which case this function
   // should return false.
-  virtual bool SendHeaders(const Stream& stream,
+  virtual bool SendHeaders(Stream& stream,
                            HeadersKind kind,
                            const v8::Local<v8::Array>& headers,
                            HeadersFlags flags = HeadersFlags::NONE) {
     return false;
   }
+
+  // Updates JavaScript callback interest for an application's stream header
+  // events. Applications without header semantics ignore this.
+  virtual void SetHeadersInterest(Stream& stream,
+                                  bool wants_headers,
+                                  bool wants_trailers) {}
 
   // Returns true if the application protocol supports sending and
   // receiving headers on streams (e.g. HTTP/3). Applications that

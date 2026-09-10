@@ -9,9 +9,11 @@
 #include "node_context_data.h"
 #include "node_contextify.h"
 #include "node_errors.h"
+#include "node_file_utils.h"
 #include "node_internals.h"
 #include "node_options-inl.h"
 #include "node_process-inl.h"
+#include "node_profiling.h"
 #include "node_shadow_realm.h"
 #include "node_snapshotable.h"
 #include "node_v8_platform-inl.h"
@@ -36,6 +38,7 @@
 #include <limits>
 #include <memory>
 #include <optional>
+#include <sstream>
 #include <unordered_map>
 
 namespace node {
@@ -597,10 +600,8 @@ IsolateData* IsolateData::CreateIsolateData(
     uv_loop_t* loop,
     MultiIsolatePlatform* platform,
     ArrayBufferAllocator* allocator,
-    const EmbedderSnapshotData* embedder_snapshot_data,
+    const SnapshotData* snapshot_data,
     std::shared_ptr<PerIsolateOptions> options) {
-  const SnapshotData* snapshot_data =
-      SnapshotData::FromEmbedderWrapper(embedder_snapshot_data);
   if (options == nullptr) {
     options = per_process::cli_options->per_isolate->Clone();
   }
@@ -819,6 +820,105 @@ void Environment::recycle_managed_buffer(std::unique_ptr<BackingStore> bs) {
     managed_buffer_cache_ = std::move(bs);
 }
 
+uv_buf_t StreamReadSlab::Allocate(Isolate* isolate, size_t suggested) {
+  DCHECK_GT(suggested, 0);
+  // Reads always get the full `suggested` size: handing out a smaller
+  // remainder would shrink the read() buffer and fragment large reads into
+  // more system calls, which costs more than the slab tail it saves.
+  size_t remaining = current_.bs ? current_.size() - current_.offset : 0;
+  if (remaining < suggested) {
+    // Retire the current slab; it stays alive through `retired_` if reads
+    // are still pending on it, or through JS views over it otherwise.
+    if (current_.bs && current_.pending > 0)
+      retired_.push_back(std::move(current_));
+    current_ = Slab();
+    std::unique_ptr<BackingStore> bs = ArrayBuffer::NewBackingStore(
+        isolate,
+        std::max(kSlabSize, suggested),
+        BackingStoreInitializationMode::kUninitialized);
+    current_.bs = std::move(bs);
+  }
+  char* base = current_.data() + current_.offset;
+  current_.offset += suggested;
+  current_.last_base = base;
+  current_.last_end = current_.offset;
+  current_.pending++;
+  return uv_buf_init(base, suggested);
+}
+
+StreamReadSlab::Slab* StreamReadSlab::FindSlab(const char* base) {
+  if (current_.Contains(base)) return &current_;
+  for (Slab& slab : retired_)
+    if (slab.Contains(base)) return &slab;
+  return nullptr;
+}
+
+void StreamReadSlab::CompleteReservation(Slab* slab,
+                                         const uv_buf_t& buf,
+                                         size_t used) {
+  DCHECK_GT(slab->pending, 0);
+  slab->pending--;
+  if (buf.base == slab->last_base && slab->offset == slab->last_end) {
+    // This was the most recent reservation and nothing was reserved after
+    // it: rewind the unused remainder so it can be reserved again.
+    slab->offset = (buf.base - slab->data()) + used;
+    slab->last_end = slab->offset;
+  }
+  if (slab != &current_ && slab->pending == 0) {
+    for (auto it = retired_.begin(); it != retired_.end(); ++it) {
+      if (&*it == slab) {
+        retired_.erase(it);
+        break;
+      }
+    }
+  }
+}
+
+bool StreamReadSlab::Commit(Isolate* isolate,
+                            const uv_buf_t& buf,
+                            size_t nread,
+                            Local<ArrayBuffer>* ab,
+                            size_t* offset) {
+  Slab* slab = FindSlab(buf.base);
+  if (slab == nullptr) return false;
+  DCHECK_LE(nread, buf.len);
+
+  // A partial read would leave the rest of its reservation as waste once
+  // the slab retires - memory that counts towards V8's external memory and
+  // drives up GC frequency. If most of the reservation would be wasted,
+  // give the read a right-sized copy instead (as if it had never been read
+  // into the slab) and return its reservation in full. Reads that (mostly)
+  // fill their reservation get a zero-copy view into the slab.
+  if (nread < buf.len - buf.len / 4 && buf.base == slab->last_base &&
+      slab->offset == slab->last_end) {
+    std::unique_ptr<BackingStore> bs = ArrayBuffer::NewBackingStore(
+        isolate, nread, BackingStoreInitializationMode::kUninitialized);
+    memcpy(bs->Data(), buf.base, nread);
+    *ab = ArrayBuffer::New(isolate, std::move(bs));
+    *offset = 0;
+    CompleteReservation(slab, buf, 0);
+    return true;
+  }
+
+  *offset = buf.base - slab->data();
+  if (slab->ab.IsEmpty()) {
+    *ab = ArrayBuffer::New(isolate, slab->bs);
+    slab->ab.Reset(isolate, *ab);
+  } else {
+    *ab = slab->ab.Get(isolate);
+  }
+  CompleteReservation(slab, buf, nread);
+  return true;
+}
+
+bool StreamReadSlab::Release(const uv_buf_t& buf) {
+  if (buf.base == nullptr) return true;
+  Slab* slab = FindSlab(buf.base);
+  if (slab == nullptr) return false;
+  CompleteReservation(slab, buf, 0);
+  return true;
+}
+
 std::string Environment::GetExecPath(const std::vector<std::string>& argv) {
   char exec_path_buf[2 * PATH_MAX];
   size_t exec_path_len = sizeof(exec_path_buf);
@@ -906,6 +1006,9 @@ Environment::Environment(IsolateData* isolate_data,
           isolate_data->snapshot_data()->code_cache);
     }
   }
+  if (is_main_thread() && !isolate_data->builtin_code_cache().empty()) {
+    builtin_loader()->RefreshCodeCache(isolate_data->builtin_code_cache());
+  }
 
   // Compile builtins eagerly when building the snapshot so that inner functions
   // of essential builtins that are loaded in the snapshot can have faster first
@@ -986,7 +1089,12 @@ Environment::Environment(IsolateData* isolate_data,
     // spawn/worker nor use addons or enable inspector
     // unless explicitly allowed by the user
     if (!options_->allow_addons) {
-      options_->allow_native_addons = false;
+      // In audit mode addon loading must stay enabled: the denial is
+      // published through the diagnostics channel by the permission
+      // check in DLOpen() instead of being rejected upfront.
+      if (!options_->permission_audit) {
+        options_->allow_native_addons = false;
+      }
       permission()->Apply(this, args, permission::PermissionScope::kAddon);
     }
     if (!options_->allow_inspector) {
@@ -1111,6 +1219,9 @@ Environment::~Environment() {
 
   if (heapsnapshot_near_heap_limit_callback_added_) {
     RemoveHeapSnapshotNearHeapLimitCallback(0);
+  }
+  if (heap_profile_near_heap_limit_callback_added_) {
+    RemoveHeapProfileNearHeapLimitCallback(0);
   }
 
   isolate()->GetHeapProfiler()->RemoveBuildEmbedderGraphCallback(
@@ -2179,14 +2290,49 @@ void Environment::TracePromises(PromiseHookType type,
   PrintCurrentStackTrace(isolate);
 }
 
+// V8 only invokes the most recently registered near-heap-limit callback.
+// To allow the snapshot and profile handlers to coexist on the same
+// isolate, both register through this single V8-facing entry point. It fans
+// out to whichever sub-handlers are active and returns the largest requested
+// heap limit.
 size_t Environment::NearHeapLimitCallback(void* data,
                                           size_t current_heap_limit,
                                           size_t initial_heap_limit) {
   auto* env = static_cast<Environment*>(data);
 
+  // Profile and snapshot generation can allocate and invoke this callback
+  // recursively. Only extend the heap for the operation already in progress;
+  // do not start the other diagnostic from the nested invocation.
+  if (env->is_in_heapsnapshot_heap_limit_callback_) {
+    return HeapSnapshotNearHeapLimitCallback(
+        data, current_heap_limit, initial_heap_limit);
+  }
+  if (env->is_in_heap_profile_near_heap_limit_callback_) {
+    return HeapProfileNearHeapLimitCallback(
+        data, current_heap_limit, initial_heap_limit);
+  }
+
+  size_t new_limit = current_heap_limit;
+  if (env->heapsnapshot_near_heap_limit_callback_added_) {
+    new_limit = std::max(new_limit,
+                         HeapSnapshotNearHeapLimitCallback(
+                             data, current_heap_limit, initial_heap_limit));
+  }
+  if (env->heap_profile_near_heap_limit_callback_added_) {
+    new_limit = std::max(new_limit,
+                         HeapProfileNearHeapLimitCallback(
+                             data, current_heap_limit, initial_heap_limit));
+  }
+  return new_limit;
+}
+
+size_t Environment::HeapSnapshotNearHeapLimitCallback(
+    void* data, size_t current_heap_limit, size_t initial_heap_limit) {
+  auto* env = static_cast<Environment*>(data);
+
   Debug(env,
         DebugCategory::DIAGNOSTICS,
-        "Invoked NearHeapLimitCallback, processing=%d, "
+        "Invoked HeapSnapshotNearHeapLimitCallback, processing=%d, "
         "current_limit=%" PRIu64 ", "
         "initial_limit=%" PRIu64 "\n",
         env->is_in_heapsnapshot_heap_limit_callback_,
@@ -2305,6 +2451,85 @@ size_t Environment::NearHeapLimitCallback(void* data,
 
   // The new limit must be higher than current_heap_limit or V8 might
   // crash.
+  return new_limit;
+}
+
+size_t Environment::HeapProfileNearHeapLimitCallback(
+    void* data, size_t current_heap_limit, size_t initial_heap_limit) {
+  auto* env = static_cast<Environment*>(data);
+
+  Debug(env,
+        DebugCategory::DIAGNOSTICS,
+        "Invoked HeapProfileNearHeapLimitCallback, processing=%d, "
+        "current_limit=%" PRIu64 ", "
+        "initial_limit=%" PRIu64 "\n",
+        env->is_in_heap_profile_near_heap_limit_callback_,
+        static_cast<uint64_t>(current_heap_limit),
+        static_cast<uint64_t>(initial_heap_limit));
+
+  const size_t max_young_gen_size = env->isolate_data()->max_young_gen_size;
+  const size_t new_limit = current_heap_limit + max_young_gen_size;
+
+  if (env->is_in_heap_profile_near_heap_limit_callback_) {
+    return new_limit;
+  }
+
+  env->is_in_heap_profile_near_heap_limit_callback_ = true;
+  auto reset_in_callback = OnScopeLeave(
+      [env]() { env->is_in_heap_profile_near_heap_limit_callback_ = false; });
+  auto restore_initial_limit = OnScopeLeave(
+      [env]() { env->isolate()->AutomaticallyRestoreInitialHeapLimit(0.95); });
+  auto uninstall_callback = [env]() {
+    env->RemoveHeapProfileNearHeapLimitCallback(0);
+  };
+
+  std::string dir = env->options()->diagnostic_dir;
+  if (dir.empty()) {
+    dir = Environment::GetCwd(env->exec_path_);
+  }
+  DiagnosticFilename name(env, "Heap", "heapprofile");
+  std::string filename = dir + kPathSeparator + (*name);
+
+  Debug(env, DebugCategory::DIAGNOSTICS, "Writing %s...\n", *name);
+
+  std::ostringstream out;
+  if (!node::SerializeHeapProfile(env->isolate(), out)) {
+    Debug(env,
+          DebugCategory::DIAGNOSTICS,
+          "No sampling heap profile active; uninstalling callback.\n");
+    uninstall_callback();
+    return new_limit;
+  }
+
+  std::string profile = std::move(out).str();
+  uv_buf_t buffer = uv_buf_init(profile.data(), profile.size());
+  const int err = WriteFileSync(filename.c_str(), buffer);
+  if (err != 0) {
+    FPrintF(stderr,
+            "Failed to write heap profile %s: %s\n",
+            filename,
+            uv_strerror(err));
+    uninstall_callback();
+    return new_limit;
+  }
+
+  env->heap_limit_profile_taken_ += 1;
+  FPrintF(stderr, "Wrote heap profile to %s\n", filename);
+
+  Debug(env,
+        DebugCategory::DIAGNOSTICS,
+        "%" PRIu32 "/%" PRIu32 " heap profiles written.\n",
+        env->heap_limit_profile_taken_,
+        env->heap_profile_near_heap_limit_);
+
+  if (env->heap_limit_profile_taken_ == env->heap_profile_near_heap_limit_) {
+    Debug(env,
+          DebugCategory::DIAGNOSTICS,
+          "Removing the near heap limit callback");
+    uninstall_callback();
+  }
+
+  // Returning a larger value is required by V8 even after the final write.
   return new_limit;
 }
 

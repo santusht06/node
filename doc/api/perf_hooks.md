@@ -1091,6 +1091,54 @@ changes:
 The high resolution millisecond timestamp representing the time immediately
 before Node.js receives the first byte of the response from the server.
 
+### `performanceResourceTiming.finalResponseHeadersStart`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* Type: {number}
+
+The high resolution millisecond timestamp representing the time immediately
+after Node.js receives the first byte of the final response,
+as opposed to an interim response.
+
+### `performanceResourceTiming.firstInterimResponseStart`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* Type: {number}
+
+The high resolution millisecond timestamp representing the time immediately
+after Node.js receives the first byte of the first interim response, such as
+a `103 Early Hints` response.
+
+### `performanceResourceTiming.responseStart`
+
+<!-- YAML
+added:
+  - v18.2.0
+  - v16.17.0
+changes:
+  - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/65017
+    description: This property now returns `firstInterimResponseStart`
+                 when it is non-zero.
+  - version: v19.0.0
+    pr-url: https://github.com/nodejs/node/pull/44483
+    description: This property getter must be called with the
+                 `PerformanceResourceTiming` object as the receiver.
+-->
+
+* Type: {number}
+
+The high resolution millisecond timestamp representing the time immediately
+after Node.js receives the first byte of the response from the server. This
+is `firstInterimResponseStart` when it is non-zero, and
+`finalResponseHeadersStart` otherwise.
+
 ### `performanceResourceTiming.responseEnd`
 
 <!-- YAML
@@ -1165,6 +1213,37 @@ changes:
 A number representing the size (in octets) received from the fetch
 (HTTP or cache), of the message body, after removing any applied
 content-codings.
+
+### `performanceResourceTiming.renderBlockingStatus`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* Type: {string}
+
+The render blocking status of the resource. It is either `'blocking'` or `'non-blocking'`.
+
+### `performanceResourceTiming.contentType`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* Type: {string}
+
+The minimized MIME type of the content of the fetched resource, or an empty
+string if it cannot be determined.
+
+### `performanceResourceTiming.contentEncoding`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* Type: {string}
+
+The content encoding of the fetched resource, such as `'gzip'` or `'br'`.
 
 ### `performanceResourceTiming.toJSON()`
 
@@ -1885,7 +1964,9 @@ added: v11.10.0
 ### `histogram.burnRate(sloTarget)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `sloTarget` {number} The SLO target as a fraction between 0 and 1
@@ -1940,7 +2021,9 @@ The number of samples recorded by the histogram.
 ### `histogram.ccdf(value)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `value` {number} The value to query.
@@ -1953,7 +2036,9 @@ will exceed `value`. Equivalent to `1 - histogram.cdf(value)`.
 ### `histogram.cdf(value)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `value` {number} The value to query.
@@ -1967,7 +2052,9 @@ than or equal to `value`. This is the inverse operation of
 ### `histogram.cliffsD(other)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `other` {Histogram} The histogram to compare against.
@@ -1982,7 +2069,9 @@ opposite; 0 means no tendency in either direction.
 ### `histogram.cohensD(other)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `other` {Histogram} The histogram to compare against.
@@ -1997,7 +2086,9 @@ Both histograms must have at least 2 recorded values; otherwise returns 0.
 ### `histogram.countAt(value)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `value` {number} The value to query.
@@ -2033,7 +2124,7 @@ loop delay threshold.
 ### `histogram.export()`
 
 <!-- YAML
-added: REPLACEME
+added: v24.21.0
 -->
 
 * Returns: {Uint8Array}
@@ -2082,7 +2173,9 @@ Returns `0` when EWMA is disabled or no values have been recorded.
 ### `histogram.ewmaStddev`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * Type: {number}
@@ -2094,7 +2187,9 @@ when EWMA is disabled or no values have been recorded.
 ### `histogram.ewmaErrorRate`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * Type: {number}
@@ -2107,7 +2202,9 @@ recorded.
 ### `histogram.ksTest(other)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `other` {Histogram} The histogram to compare against.
@@ -2121,7 +2218,9 @@ detecting performance regressions by comparing before/after histograms.
 ### `histogram.kurtosis`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * Type: {number}
@@ -2134,7 +2233,9 @@ lighter tails.
 ### `histogram.linearBuckets(stepSize)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `stepSize` {number} The width of each linear bucket.
@@ -2146,7 +2247,9 @@ of `stepSize`. Useful for visualization and export.
 ### `histogram.logBuckets(firstBucket, base)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `firstBucket` {number} The value of the first bucket boundary.
@@ -2160,7 +2263,9 @@ Useful for visualization and export.
 ### `histogram.mannWhitneyTest(other)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `other` {Histogram} The histogram to compare against.
@@ -2206,6 +2311,41 @@ added: v11.10.0
 * Type: {number}
 
 The mean of the recorded event loop delays.
+
+### `histogram.meanCI([options])`
+
+<!-- YAML
+added: REPLACEME
+-->
+
+* `options` {Object}
+  * `confidence` {number} The confidence level for the interval, between
+    0 and 1 (exclusive). **Default:** `0.95`.
+* Returns: {Object}
+  * `mean` {number} The mean estimate, equivalent to `histogram.mean`.
+  * `lower` {number} The lower bound of the confidence interval.
+  * `upper` {number} The upper bound of the confidence interval.
+
+Returns a two-sided confidence interval for the mean using Student's
+t-distribution and the sample standard error. A higher confidence level
+produces a wider interval. This interval assumes that samples are independent
+and approximately normally distributed, although the approximation is robust
+for sufficiently large samples.
+
+The result reflects the histogram's configured precision and is calculated
+from the values represented by its buckets. With fewer than two recorded
+values, `lower` and `upper` are `NaN`. When all recorded values are equal,
+`lower` and `upper` equal `mean`.
+
+```js
+const { createHistogram } = require('node:perf_hooks');
+
+const h = createHistogram();
+for (let i = 1; i <= 100; i++) h.record(i);
+
+const { mean, lower, upper } = h.meanCI();
+console.log(`mean=${mean}, 95% CI=[${lower}, ${upper}]`);
+```
 
 ### `histogram.min`
 
@@ -2256,7 +2396,9 @@ Returns the value at the given percentile.
 ### `histogram.percentileCI(percentile[, options])`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `percentile` {number} A percentile value in the range (0, 100].
@@ -2312,7 +2454,9 @@ Returns a `Map` object detailing the accumulated percentile distribution.
 ### `histogram.percentilesAt(percentiles)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `percentiles` {number\[]} An array of percentile values in the range (0, 100].
@@ -2334,7 +2478,9 @@ Resets the collected histogram data.
 ### `histogram.skewness`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * Type: {number}
@@ -2357,7 +2503,9 @@ The standard deviation of the recorded event loop delays.
 ### `histogram.welchTest(other[, options])`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `other` {Histogram} The histogram to compare against.
@@ -2473,7 +2621,9 @@ previous call to `recordDelta()` and records that amount in the histogram.
 ### `histogram.recordCorrected(val, expectedInterval)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `val` {number|bigint} The value to record.
@@ -2488,7 +2638,9 @@ latency.
 ### `histogram.subtract(other)`
 
 <!-- YAML
-added: v26.8.0
+added:
+ - v26.8.0
+ - v24.21.0
 -->
 
 * `other` {RecordableHistogram}
