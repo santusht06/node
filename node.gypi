@@ -93,6 +93,11 @@
     [ 'OS=="linux" and target_arch=="s390x"', {
       'cflags': [ '-march=z14' ],
     }],
+    [ 'v8_use_perfetto==1 and node_shared_perfetto=="false"', {
+      'dependencies': [
+        'deps/perfetto/perfetto.gyp:perfetto_sdk',
+      ],
+    }],
     [ 'node_enable_d8=="true"', {
       'dependencies': [ 'tools/v8_gypfiles/d8.gyp:d8' ],
     }],
@@ -247,7 +252,7 @@
     }],
 
     [ 'node_shared_simdutf=="false" and node_use_bundled_v8!="false"', {
-        'dependencies': [ 'tools/v8_gypfiles/v8.gyp:simdutf' ],
+        'dependencies': [ 'tools/v8_gypfiles/simdutf.gyp:simdutf' ],
     }],
 
     [ 'node_shared_brotli=="false"', {
@@ -471,7 +476,6 @@
       'defines': [ 'NODE_SHARED_FFI=0' ]
     }],
     [ 'node_use_quic=="true"', {
-      'defines': [ 'HAVE_QUIC=1' ],
       'conditions': [
         [ 'node_shared_openssl=="false"', {
           'dependencies': [
@@ -484,8 +488,6 @@
           ],
         }],
       ],
-    }, {
-      'defines': [ 'HAVE_QUIC=0' ]
     }],
   ],
 }

@@ -248,7 +248,7 @@ class Stream final : public AsyncWrap,
   ~Stream() override;
 
   // While the stream is still pending, the id will be kMaxStreamId,
-  // inidicating the maximum possible stream id is kMaxStreamId - 1.
+  // indicating the maximum possible stream id is kMaxStreamId - 1.
   stream_id id() const;
 
   // While the stream is still pending, the origin will be invalid.
@@ -315,7 +315,7 @@ class Stream final : public AsyncWrap,
 
   // Called by the session/application to indicate that the specified number
   // of bytes have been transmitted to the peer.  This is an initial
-  // indication occuring the first time data is sent. It does not indicate
+  // indication occurring the first time data is sent. It does not indicate
   // that the data has been retransmitted due to loss or has been
   // acknowledged to have been received by the peer.
   void Commit(size_t datalen, bool fin = false);
@@ -325,7 +325,12 @@ class Stream final : public AsyncWrap,
   void UpdateWriteDesiredSize();
 
   void EndWritable();
-  void EndReadable(std::optional<uint64_t> maybe_final_size = std::nullopt);
+  // The read side ended cleanly with a peer FIN: the content is complete.
+  void FinishReadable();
+  // The read side ended without a FIN (a reset, a local abort, or the session
+  // being torn down) so the content is truncated.
+  void TruncateReadable(
+      std::optional<uint64_t> maybe_final_size = std::nullopt);
   void EntryRead(size_t amount) override;
   void BeforePull() override;
 
@@ -416,10 +421,13 @@ class Stream final : public AsyncWrap,
   // consumer or dropped before reaching one.
   void CreditConsumedBytes(uint64_t amount);
 
+  // Common tail of FinishReadable()/TruncateReadable(): marks the read side
+  // ended, caps it at the final size, and notifies the reader.
+  void CapReadable(std::optional<uint64_t> maybe_final_size);
+
   // Gets a reader for the data received for this stream from the peer,
   BaseObjectPtr<Blob::Reader> get_reader();
 
-  void set_final_size(uint64_t amount);
   void set_outbound(std::shared_ptr<DataQueue> source);
 
   // Streaming outbound support
@@ -432,6 +440,10 @@ class Stream final : public AsyncWrap,
   void ReleaseArenaSlots();
 
   // JavaScript callouts
+
+  // Notifies the JavaScript side that a previously pending stream
+  // is now available.
+  void EmitStreamAvailable();
 
   // Notifies the JavaScript side that the stream has been destroyed.
   void EmitClose(const QuicError& error);

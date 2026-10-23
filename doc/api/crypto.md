@@ -160,8 +160,6 @@ and is the fastest serialized import format.
 
 #### Raw key formats
 
-> Stability: 1.1 - Active development
-
 The `'raw-public'`, `'raw-private'`, and `'raw-seed'` key formats allow
 importing and exporting raw key material without any encoding wrapper.
 See [`keyObject.export()`][], [`crypto.createPublicKey()`][], and
@@ -2546,7 +2544,9 @@ or `'private'` for private (asymmetric) keys.
 ## Class: `Mac`
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v26.9.0
+  - v24.22.0
 -->
 
 * Extends: {stream.Transform}
@@ -2591,7 +2591,9 @@ console.log(mac.final('hex'));
 ### `mac.final([outputEncoding])`
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v26.9.0
+  - v24.22.0
 -->
 
 * `outputEncoding` {string} The [encoding][] of the return value.
@@ -2611,7 +2613,9 @@ including when finalization fails. Later calls to `mac.update()` or
 ### `mac.update(data[, inputEncoding])`
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v26.9.0
+  - v24.22.0
 -->
 
 * `data` {string|Buffer|TypedArray|DataView}
@@ -3034,8 +3038,7 @@ changes:
 Checks whether the certificate matches the given email address.
 
 If the `'subject'` option is undefined or set to `'default'`, the certificate
-subject is only considered if the subject alternative name extension either does
-not exist or does not contain any email addresses.
+subject is considered according to OpenSSL's default behavior.
 
 If the `'subject'` option is set to `'always'` and if the subject alternative
 name extension either does not exist or does not contain a matching email
@@ -3079,9 +3082,7 @@ comparisons are case-insensitive, the returned subject name might also differ
 from the given `name` in capitalization.
 
 If the `'subject'` option is undefined or set to `'default'`, the certificate
-subject is only considered if the subject alternative name extension either does
-not exist or does not contain any DNS names. This behavior is consistent with
-[RFC 2818][] ("HTTP Over TLS").
+subject is considered according to OpenSSL's default behavior.
 
 If the `'subject'` option is set to `'always'` and if the subject alternative
 name extension either does not exist or does not contain a matching DNS name,
@@ -3668,15 +3669,19 @@ operations. The specific constants currently defined are described in
 added: v0.1.94
 changes:
   - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/63188
+    description: Passing a CryptoKey as `key` is no longer supported.
+  - version:
+    - v26.9.0
+    - v24.22.0
     pr-url: https://github.com/nodejs/node/pull/65484
     description: Additional ciphers available through OpenSSL providers (e.g.
                  SM4-GCM, SM4-CCM, SM4-XTS, CBC-CTS, and AES key-wrap variants)
                  are now supported. The `ctsMode` and `xtsStandard` options
                  were added.
-  - version: REPLACEME
-    pr-url: https://github.com/nodejs/node/pull/63188
-    description: Passing a CryptoKey as `key` is no longer supported.
-  - version: v26.8.0
+  - version:
+    - v26.8.0
+    - v24.22.0
     pr-url: https://github.com/nodejs/node/pull/63411
     description: Ciphers in SIV and GCM-SIV modes are now supported.
   - version: v26.0.0
@@ -3780,15 +3785,19 @@ and can be transmitted with the ciphertext.
 added: v0.1.94
 changes:
   - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/63188
+    description: Passing a CryptoKey as `key` is no longer supported.
+  - version:
+    - v26.9.0
+    - v24.22.0
     pr-url: https://github.com/nodejs/node/pull/65484
     description: Additional ciphers available through OpenSSL providers (e.g.
                  SM4-GCM, SM4-CCM, SM4-XTS, CBC-CTS, and AES key-wrap variants)
                  are now supported. The `ctsMode` and `xtsStandard` options
                  were added.
-  - version: REPLACEME
-    pr-url: https://github.com/nodejs/node/pull/63188
-    description: Passing a CryptoKey as `key` is no longer supported.
-  - version: v26.8.0
+  - version:
+    - v26.8.0
+    - v24.22.0
     pr-url: https://github.com/nodejs/node/pull/63411
     description: Ciphers in SIV and GCM-SIV modes are now supported.
   - version: v26.0.0
@@ -3961,14 +3970,16 @@ and description of each available elliptic curve.
 added: v0.1.92
 changes:
   - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/64000
+    description: The `outputLength` option is now required for XOF
+                 hash functions without default output lengths.
+  - version:
+    - v26.9.0
+    - v24.22.0
     pr-url: https://github.com/nodejs/node/pull/65484
     description: Hash algorithms exposed by OpenSSL providers are now
                  supported. The `functionName` and `customization` options
                  were added for cSHAKE hash functions.
-  - version: REPLACEME
-    pr-url: https://github.com/nodejs/node/pull/64000
-    description: The `outputLength` option is now required for XOF
-                 hash functions without default output lengths.
   - version: v12.8.0
     pr-url: https://github.com/nodejs/node/pull/28805
     description: The `outputLength` option was added for XOF hash functions.
@@ -4164,7 +4175,9 @@ input.on('readable', () => {
 ### `crypto.createMac(algorithm, key[, options])`
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v26.9.0
+  - v24.22.0
 -->
 
 > Stability: 1.2 - Release candidate
@@ -5205,7 +5218,9 @@ mode][].
 <!-- YAML
 added: v0.9.3
 changes:
-  - version: REPLACEME
+  - version:
+    - v26.9.0
+    - v24.22.0
     pr-url: https://github.com/nodejs/node/pull/65484
     description: Names and aliases exposed by loaded OpenSSL providers that
                  match the default property query are now included.
@@ -5244,7 +5259,9 @@ console.log(getHashes()); // ['DSA', 'DSA-SHA', 'DSA-SHA1', ...]
 ### `crypto.getMacs()`
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v26.9.0
+  - v24.22.0
 -->
 
 > Stability: 1.2 - Release candidate
@@ -5296,14 +5313,16 @@ added:
  - v20.12.0
 changes:
   - version: REPLACEME
+    pr-url: https://github.com/nodejs/node/pull/64000
+    description: The `outputLength` option is now required for XOF
+                 hash functions without default output lengths.
+  - version:
+    - v26.9.0
+    - v24.22.0
     pr-url: https://github.com/nodejs/node/pull/65484
     description: Hash algorithms exposed by OpenSSL providers are now
                  supported. The `functionName` and `customization` options
                  were added for cSHAKE hash functions.
-  - version: REPLACEME
-    pr-url: https://github.com/nodejs/node/pull/64000
-    description: The `outputLength` option is now required for XOF
-                 hash functions without default output lengths.
   - version:
      - v25.5.0
      - v24.13.1
@@ -5518,6 +5537,41 @@ const derivedKey = hkdfSync('sha512', 'key', 'salt', 'info', 64);
 console.log(Buffer.from(derivedKey).toString('hex'));  // '24156e2...5391653'
 ```
 
+### `crypto.parsePKCS12(bundle[, options])`
+
+<!-- YAML
+added:
+  - v26.10.0
+  - v24.22.0
+-->
+
+* `bundle` {ArrayBuffer|Buffer|TypedArray|DataView} A DER-encoded PKCS#12
+  (`.p12` or `.pfx`) bundle.
+* `options` {Object}
+  * `passphrase` {string|ArrayBuffer|Buffer|TypedArray|DataView} The passphrase
+    protecting the bundle. Omitting this option is equivalent to passing `''`.
+* Returns: {Object}
+  * `privateKey` {KeyObject|null} The first private key in the bundle, or
+    `null` if none is present.
+  * `certificate` {X509Certificate|null} The certificate matching `privateKey`,
+    or `null` if no matching certificate is present.
+  * `additionalCertificates` {X509Certificate\[]} All other certificates in
+    the bundle. If there is no private key, this contains all certificates.
+    May be empty.
+
+Parses a PKCS#12 bundle, commonly stored with a `.p12` or `.pfx` extension,
+and returns its private key and certificates.
+
+```mjs
+import { parsePKCS12 } from 'node:crypto';
+import { readFileSync } from 'node:fs';
+
+const { privateKey, certificate, additionalCertificates } = parsePKCS12(
+  readFileSync('bundle.p12'),
+  { passphrase: 'secret' },
+);
+```
+
 ### `crypto.pbkdf2(password, salt, iterations, keylen, digest, callback)`
 
 <!-- YAML
@@ -5689,7 +5743,9 @@ changes:
   - version: REPLACEME
     pr-url: https://github.com/nodejs/node/pull/63188
     description: Passing a CryptoKey as `privateKey` is no longer supported.
-  - version: v26.8.0
+  - version:
+    - v26.8.0
+    - v24.22.0
     pr-url: https://github.com/nodejs/node/pull/65073
     description: The `mgf1Hash` option was added.
   - version:
@@ -5850,7 +5906,9 @@ changes:
   - version: REPLACEME
     pr-url: https://github.com/nodejs/node/pull/63188
     description: Passing a CryptoKey as `key` is no longer supported.
-  - version: v26.8.0
+  - version:
+    - v26.8.0
+    - v24.22.0
     pr-url: https://github.com/nodejs/node/pull/65073
     description: The `mgf1Hash` option was added.
   - version: v15.0.0
@@ -7607,7 +7665,6 @@ See the [list of SSL OP Flags][] for details.
 [Permission Model]: permissions.md#permission-model
 [RFC 1421]: https://www.rfc-editor.org/rfc/rfc1421.txt
 [RFC 2409]: https://www.rfc-editor.org/rfc/rfc2409.txt
-[RFC 2818]: https://www.rfc-editor.org/rfc/rfc2818.txt
 [RFC 3526]: https://www.rfc-editor.org/rfc/rfc3526.txt
 [RFC 3610]: https://www.rfc-editor.org/rfc/rfc3610.txt
 [RFC 4055]: https://www.rfc-editor.org/rfc/rfc4055.txt

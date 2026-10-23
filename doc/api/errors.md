@@ -1083,7 +1083,9 @@ The given crypto key object's type is invalid for the attempted operation.
 ### `ERR_CRYPTO_INVALID_MAC`
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v26.9.0
+  - v24.22.0
 -->
 
 An invalid MAC algorithm was specified.
@@ -1166,7 +1168,9 @@ OpenSSL with KEM support.
 ### `ERR_CRYPTO_MAC_FINALIZED`
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v26.9.0
+  - v24.22.0
 -->
 
 An operation was attempted on a `Mac` object after finalization was attempted
@@ -1177,7 +1181,9 @@ or an underlying MAC update failed.
 ### `ERR_CRYPTO_MAC_NOT_SUPPORTED`
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v26.9.0
+  - v24.22.0
 -->
 
 Node.js was built without support for the OpenSSL `EVP_MAC` API.
@@ -1187,7 +1193,9 @@ Node.js was built without support for the OpenSSL `EVP_MAC` API.
 ### `ERR_CRYPTO_MAC_UPDATE_FAILED`
 
 <!-- YAML
-added: REPLACEME
+added:
+  - v26.9.0
+  - v24.22.0
 -->
 
 [`mac.update()`][] failed for an unspecified reason.
@@ -2964,6 +2972,22 @@ added:
 An attempt was made to `require()` an [ES Module][] while another `import()` call
 was already in progress to load it asynchronously.
 
+<a id="ERR_RX_MEMORY_NOT_SUPPORTED"></a>
+
+### `ERR_RX_MEMORY_NOT_SUPPORTED`
+
+<!-- YAML
+added: v26.12.0
+-->
+
+A feature requiring runtime allocation of executable memory was used in an
+environment where that capability is unavailable. This includes creating an
+otherwise eligible FFI Fast API function, or allocating an FFI callback when
+libffi cannot provide a closure and executable memory is unavailable.
+
+Node.js does not guarantee a non-generated-code fallback for these operations.
+This error can be caught without terminating the process.
+
 <a id="ERR_SCRIPT_EXECUTION_INTERRUPTED"></a>
 
 ### `ERR_SCRIPT_EXECUTION_INTERRUPTED`
@@ -3239,6 +3263,13 @@ This error represents a failed test. Additional information about the failure
 is available via the `cause` property. The `failureType` property specifies
 what the test was doing when the failure occurred.
 
+<a id="ERR_THROTTLED"></a>
+
+### `ERR_THROTTLED`
+
+A call was dropped because a throttled function could not invoke it immediately
+or its pending queue was full.
+
 <a id="ERR_TLS_ALPN_CALLBACK_INVALID_RESULT"></a>
 
 ### `ERR_TLS_ALPN_CALLBACK_INVALID_RESULT`
@@ -3381,7 +3412,8 @@ category.
 ### `ERR_TRACE_EVENTS_UNAVAILABLE`
 
 The `node:trace_events` module could not be loaded because Node.js was compiled
-with the `--without-v8-platform` flag.
+with the `--without-v8-platform` flag, or because the process was initialized by
+an embedder that provides its own V8 platform.
 
 <a id="ERR_TRAILING_JUNK_AFTER_STREAM_END"></a>
 
@@ -3557,6 +3589,13 @@ An attempt was made to use something that was already closed.
 While using the Performance Timing API (`perf_hooks`), no valid performance
 entry types are found.
 
+<a id="ERR_VFS_INVALID_TARGET"></a>
+
+### `ERR_VFS_INVALID_TARGET`
+
+A `--vfs-load` source does not exist, is neither a regular file nor a
+directory, or is a source no provider claims.
+
 <a id="ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING"></a>
 
 ### `ERR_VM_DYNAMIC_IMPORT_CALLBACK_MISSING`
@@ -3637,6 +3676,11 @@ The WASI instance has not been started.
 A feature requiring WebAssembly was used, but WebAssembly is not supported or
 has been disabled in the current environment (for example, when running with
 `--jitless`).
+
+TypeScript parsing and WebAssembly module imports, including source phase
+imports, report this error when WebAssembly is unavailable. Node.js does not
+provide an alternative implementation for these operations. This error can be
+caught without terminating the process.
 
 <a id="ERR_WEBASSEMBLY_RESPONSE"></a>
 

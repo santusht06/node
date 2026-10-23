@@ -290,11 +290,6 @@ enum class Side : uint8_t {
   SERVER,
 };
 
-enum class EndpointLabel : uint8_t {
-  LOCAL,
-  REMOTE,
-};
-
 enum class Direction : uint8_t {
   BIDIRECTIONAL,
   UNIDIRECTIONAL,
@@ -400,6 +395,7 @@ class DebugIndentScope final {
   }
 
  private:
+  // NOLINTNEXTLINE(runtime/thread_local)
   static thread_local int indent_;
 };
 

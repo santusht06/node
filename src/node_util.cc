@@ -47,15 +47,6 @@ using v8::String;
 using v8::Uint32;
 using v8::Value;
 
-// If a UTF-16 character is a low/trailing surrogate.
-CHAR_TEST(16, IsUnicodeTrail, (ch & 0xFC00) == 0xDC00)
-
-// If a UTF-16 character is a surrogate.
-CHAR_TEST(16, IsUnicodeSurrogate, (ch & 0xF800) == 0xD800)
-
-// If a UTF-16 surrogate is a low/trailing one.
-CHAR_TEST(16, IsUnicodeSurrogateTrail, (ch & 0x400) != 0)
-
 static void GetOwnNonIndexProperties(
     const FunctionCallbackInfo<Value>& args) {
   Isolate* isolate = args.GetIsolate();
@@ -369,7 +360,7 @@ static void DefineLazyPropertiesGetter(
   // When this getter is invoked in a vm context, the `Realm::GetCurrent(info)`
   // returns a nullptr and retrieve the creation context via `this` object and
   // get the creation Realm.
-  Local<Value> receiver_val = info.HolderV2();
+  Local<Value> receiver_val = info.Holder();
   if (!receiver_val->IsObject()) {
     THROW_ERR_INVALID_INVOCATION(isolate);
     return;
@@ -522,7 +513,7 @@ void Initialize(Local<Object> target,
 
   {
     const Local<Object> prototype =
-        SharedArrayBuffer::New(isolate, 0)->GetPrototypeV2().As<Object>();
+        SharedArrayBuffer::New(isolate, 0)->GetPrototype().As<Object>();
     const Local<Object> descriptor =
         prototype
             ->GetOwnPropertyDescriptor(

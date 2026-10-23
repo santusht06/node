@@ -96,6 +96,7 @@ void OOMErrorHandler(const char* location, const v8::OOMDetails& details);
   V(ERR_HEAP_PROFILE_HAVE_BEEN_STARTED, Error)                                 \
   V(ERR_HEAP_PROFILE_NOT_STARTED, Error)                                       \
   V(ERR_ILLEGAL_CONSTRUCTOR, Error)                                            \
+  V(ERR_INSPECTOR_NOT_AVAILABLE, Error)                                        \
   V(ERR_INVALID_ADDRESS, Error)                                                \
   V(ERR_INVALID_ARG_VALUE, TypeError)                                          \
   V(ERR_OSSL_EVP_INVALID_DIGEST, Error)                                        \
@@ -124,6 +125,7 @@ void OOMErrorHandler(const char* location, const v8::OOMDetails& details);
   V(ERR_OPERATION_FAILED, TypeError)                                           \
   V(ERR_OPTIONS_BEFORE_BOOTSTRAPPING, Error)                                   \
   V(ERR_OUT_OF_RANGE, RangeError)                                              \
+  V(ERR_RX_MEMORY_NOT_SUPPORTED, Error)                                        \
   V(ERR_SCRIPT_EXECUTION_INTERRUPTED, Error)                                   \
   V(ERR_SCRIPT_EXECUTION_TIMEOUT, Error)                                       \
   V(ERR_SOURCE_PHASE_NOT_DEFINED, SyntaxError)                                 \

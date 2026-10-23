@@ -11,7 +11,7 @@ if /i "%arg:~-4%"=="help" goto help
 cd %~dp0
 
 set JS_SUITES=default
-set NATIVE_SUITES=addons js-native-api node-api embedding
+set NATIVE_SUITES=addons ffi js-native-api node-api embedding
 @rem CI_* variables should be kept synchronized with the ones in Makefile
 set "CI_NATIVE_SUITES=%NATIVE_SUITES% benchmark"
 set "CI_JS_SUITES=%JS_SUITES% pummel"
@@ -119,7 +119,7 @@ if /i "%1"=="v8windbg"      set v8windbg=1&goto arg-ok
 if /i "%1"=="licensertf"    set licensertf=1&goto arg-ok
 if /i "%1"=="test"          set test_args=%test_args% %common_test_suites%&set lint_cpp=1&set lint_js=1&set lint_md=1&goto arg-ok
 if /i "%1"=="test-ci-native" set test_args=%test_args% %test_ci_args% -p tap --logfile test.tap %CI_NATIVE_SUITES% %CI_DOC%&set build_addons=1&set build_js_native_api_tests=1&set build_node_api_tests=1&set build_ffi_tests=1&set cctest_args=%cctest_args% --gtest_output=xml:cctest.junit.xml&goto arg-ok
-if /i "%1"=="test-ci-js"    set test_args=%test_args% %test_ci_args% -p tap --logfile test.tap %CI_JS_SUITES%&set build_ffi_tests=1&set no_cctest=1&goto arg-ok
+if /i "%1"=="test-ci-js"    set test_args=%test_args% %test_ci_args% -p tap --logfile test.tap %CI_JS_SUITES%&set no_cctest=1&goto arg-ok
 if /i "%1"=="build-addons"   set build_addons=1&goto arg-ok
 if /i "%1"=="build-js-native-api-tests"   set build_js_native_api_tests=1&goto arg-ok
 if /i "%1"=="build-node-api-tests"   set build_node_api_tests=1&goto arg-ok
@@ -229,7 +229,7 @@ if defined package set stage_package=1
 set "node_exe=%config%\node.exe"
 set "node_gyp_exe="%node_exe%" deps\npm\node_modules\node-gyp\bin\node-gyp"
 set "npm_exe="%~dp0%node_exe%" %~dp0deps\npm\bin\npm-cli.js"
-set "doc_kit_exe="%~dp0%node_exe%" %~dp0tools\doc\node_modules\@node-core\doc-kit\bin\cli.mjs"
+set "doc_kit_exe="%~dp0%node_exe%" %~dp0tools\doc\node_modules\@doc-kit\cli\bin\cli.mjs"
 if "%target_env%"=="vs2022" set "node_gyp_exe=%node_gyp_exe% --msvs_version=2022"
 if "%target_env%"=="vs2026" set "node_gyp_exe=%node_gyp_exe% --msvs_version=2026"
 
@@ -237,7 +237,7 @@ if "%target_env%"=="vs2026" set "node_gyp_exe=%node_gyp_exe% --msvs_version=2026
 if "%*"=="lint" if exist "%node_exe%" goto lint-cpp
 
 :: skip building if the only argument received was format-md
-if "%*"=="format-md" if exist "%node_exe%" goto format-md
+if "%*"=="format-md" if exist "%node_exe%" goto lint-md-build
 
 if "%config%"=="Debug"      set configure_flags=%configure_flags% --debug
 if defined nosnapshot       set configure_flags=%configure_flags% --without-snapshot
@@ -296,6 +296,18 @@ if errorlevel 1 goto :exit
 REM NASM is only needed on x86_64.
 if not defined openssl_no_asm if "%target_arch%" NEQ "arm64" call tools\msvs\find_nasm.cmd
 if errorlevel 1 echo Could not find NASM, install it or build with openssl-no-asm. See BUILDING.md.
+
+REM cargo is needed to build the Rust crates used for Temporal.
+if defined nobuild goto skip-find-cargo
+if "%target%"=="Clean" goto skip-find-cargo
+echo %configure_flags% | findstr /C:"--v8-disable-temporal-support" /C:"--shared-temporal_capi" >NUL && goto skip-find-cargo
+call tools\msvs\find_cargo.cmd
+if errorlevel 1 (
+  echo Could not find cargo, install the Rust toolchain. See BUILDING.md.
+  set exit_code=1
+  goto exit
+)
+:skip-find-cargo
 
 call :getnodeversion || exit /b 1
 
@@ -701,13 +713,15 @@ robocopy /e doc\api %config%\doc\api
 
 %doc_kit_exe% ^
   generate ^
-  -t legacy-html-all legacy-json-all api-links ^
-  -i doc/api/*.md ^
-  -i lib/*.js ^
+  --config-file "%~dp0tools\doc\web.doc-kit.config.mjs" ^
   -o %config%/doc/api/ ^
-  -c file://%~dp0\CHANGELOG.md ^
-  -v %NODE_VERSION% ^
-  --type-map "file://%~dp0doc\type-map.json"
+  -v %NODE_VERSION%
+
+%doc_kit_exe% ^
+  generate ^
+  --config-file "%~dp0tools\doc\api-links.doc-kit.config.mjs" ^
+  -o %config%/doc/api/ ^
+  -v %NODE_VERSION%
 
 :run
 @rem Run tests if requested.
@@ -850,7 +864,7 @@ echo running lint-js
 goto lint-js-fix
 
 :lint-js-fix
-if not defined lint_js_fix goto lint-md
+if not defined lint_js_fix goto lint-md-build
 if not exist tools\eslint\node_modules\eslint goto no-lint
 echo running lint-js-fix
 %node_exe% tools\eslint\node_modules\eslint\bin\eslint.js --cache --max-warnings=0 --report-unused-disable-directives --rule "@stylistic/js/linebreak-style: 0" eslint.config.mjs benchmark doc lib test tools --fix
@@ -898,6 +912,7 @@ for /D %%D IN (doc\*) do (
 )
 %node_exe% tools\lint-md\lint-md.mjs --format %lint_md_files%
 ENDLOCAL
+goto exit
 
 :no-lint
 echo Linting is not available through the source tarball.
